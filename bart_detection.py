@@ -1,5 +1,6 @@
 import argparse
 import random
+import ast
 
 import numpy as np
 import pandas as pd
@@ -19,7 +20,7 @@ class BartWithClassifier(nn.Module):
     def __init__(self, num_labels=26):
         super(BartWithClassifier, self).__init__()
 
-        self.bart = BartModel.from_pretrained("facebook/bart-large", local_files_only=True)
+        self.bart = BartModel.from_pretrained("facebook/bart-large")
         self.classifier = nn.Linear(self.bart.config.hidden_size, num_labels)
         self.sigmoid = nn.Sigmoid()
 
@@ -59,7 +60,45 @@ def transform_data(dataset, max_length=512):
     Return a DataLoader with the TensorDataset. You can choose a batch size of your
     choice.
     """
-    raise NotImplementedError
+    tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large")
+    valid_types = [i for i in range(1, 32) if i not in {12, 19, 20, 23, 27}]
+    type_to_idx = {t: i for i, t in enumerate(valid_types)}
+
+    input_ids_list = []
+    attention_masks = []
+    labels = []
+
+    has_labels = "paraphrase_type_ids" in dataset.columns
+
+    for _, row in dataset.iterrows():
+        enc = tokenizer(
+            row["sentence1"],
+            row["sentence2"],
+            padding="max_length",
+            truncation=True,
+            max_length=max_length,
+        )
+        input_ids_list.append(enc["input_ids"])
+        attention_masks.append(enc["attention_mask"])
+
+        if has_labels:
+            types = ast.literal_eval(row["paraphrase_type_ids"])
+            label_vec = [0] * len(valid_types)
+            for t in types:
+                if t in type_to_idx:
+                    label_vec[type_to_idx[t]] = 1
+            labels.append(label_vec)
+
+    input_ids = torch.tensor(input_ids_list)
+    attention_mask = torch.tensor(attention_masks)
+
+    if has_labels:
+        labels = torch.tensor(labels, dtype=torch.float)
+        dataset = TensorDataset(input_ids, attention_mask, labels)
+    else:
+        dataset = TensorDataset(input_ids, attention_mask)
+
+    return DataLoader(dataset, batch_size=16, shuffle=has_labels)
 
 
 def train_model(model, train_data, dev_data, device):
@@ -74,7 +113,21 @@ def train_model(model, train_data, dev_data, device):
     Return the trained model.
     """
     ### TODO
-    raise NotImplementedError
+    optimizer = AdamW(model.parameters(), lr=5e-5)
+    loss_fn = nn.BCELoss()
+    for epoch in range(1):
+        model.train()
+        for batch in tqdm(train_data, disable=TQDM_DISABLE):
+            input_ids, attention_mask, labels = [b.to(device) for b in batch]
+            optimizer.zero_grad()
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            loss = loss_fn(outputs, labels)
+            loss.backward()
+            optimizer.step()
+        if dev_data is not None:
+            acc, matt = evaluate_model(model, dev_data, device)
+            print(f"Epoch {epoch+1}: dev accuracy {acc:.3f}, MCC {matt:.3f}")
+    return model
 
 
 
@@ -86,8 +139,17 @@ def test_model(model, test_data, test_ids, device):
     Return this dataframe.
     """
     ### TODO
-
-    raise NotImplementedError
+    model.eval()
+    preds = []
+    with torch.no_grad():
+        for batch in test_data:
+            input_ids, attention_mask = batch[:2]
+            input_ids = input_ids.to(device)
+            attention_mask = attention_mask.to(device)
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            predictions = (outputs > 0.5).int().cpu().numpy().tolist()
+            preds.extend(predictions)
+    return pd.DataFrame({"id": test_ids, "Predicted_Paraphrase_Types": preds})
 
 
 def evaluate_model(model, test_data, device):
@@ -165,7 +227,10 @@ def finetune_paraphrase_detection(args):
 
     # TODO You might do a split of the train data into train/validation set here
     # (or in the csv files directly)
-    train_data = transform_data(train_dataset)
+    train_split = train_dataset.sample(frac=0.9, random_state=42)
+    dev_split = train_dataset.drop(train_split.index)
+    train_data = transform_data(train_split)
+    dev_data = transform_data(dev_split)
     test_data = transform_data(test_dataset)
 
     print(f"Loaded {len(train_dataset)} training samples.")

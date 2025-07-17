@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import pandas as pd 
 
 from bert import BertModel
 from datasets import (
@@ -352,6 +353,15 @@ def get_args():
     # TODO
     # You should split the train data into a train and dev set first and change the
     # default path of the --etpc_dev argument to your dev set.
+    train_dataset = pd.read_csv("data/etpc-paraphrase-train.csv")
+
+    train_split = train_dataset.sample(frac=0.9, random_state=42)
+    dev_split   = train_dataset.drop(train_split.index)
+
+    dev_path = "data/etpc-paraphrase-dev.csv"
+    dev_split.to_csv(dev_path, index=False)
+    print(f"[ETPC] held‑out dev file written to {dev_path} ({len(dev_split)} rows)")
+
     parser.add_argument("--etpc_train", type=str, default="data/etpc-paraphrase-train.csv")
     parser.add_argument("--etpc_dev", type=str, default="data/etpc-paraphrase-dev.csv")
     parser.add_argument(

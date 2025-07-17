@@ -47,20 +47,36 @@ class BertSelfAttention(nn.Module):
         # adding tokens with a large negative number.
 
         ### TODO: Completed
-        scores = torch.matmul(query, key.transpose(-1, -2))
+        # scores = torch.matmul(query, key.transpose(-1, -2))
+        # scores = scores / math.sqrt(self.attention_head_size)
+        # scores = scores + attention_mask
+
+        # # Normalize the scores.
+        # # Multiply the attention scores to the value and get back V'.
+        # # Next, we need to concat multi-heads and recover the original shape
+        # attn_probs = F.softmax(scores, dim=-1)
+        # attn_probs = self.dropout(attn_probs)
+        # context = torch.matmul(attn_probs, value)
+        # context = context.transpose(1, 2).contiguous()
+        # bs, _, seq_len, _ = context.size()
+        # # [bs, seq_len, num_attention_heads * attention_head_size = hidden_size].
+        # context = context.view(bs, seq_len, self.all_head_size)
+        # return context
+
+        # In the attention_mask, non-padding tokens are 0, and padding tokens are large negative numbers.
+        scores = torch.matmul(query, key.transpose(-1, -2))  # [bs, num_heads, seq_len, seq_len]
         scores = scores / math.sqrt(self.attention_head_size)
         scores = scores + attention_mask
 
-        # Normalize the scores.
-        # Multiply the attention scores to the value and get back V'.
-        # Next, we need to concat multi-heads and recover the original shape
+        # Normalize and apply attention
         attn_probs = F.softmax(scores, dim=-1)
         attn_probs = self.dropout(attn_probs)
-        context = torch.matmul(attn_probs, value)
-        context = context.transpose(1, 2).contiguous()
-        bs, _, seq_len, _ = context.size()
-        # [bs, seq_len, num_attention_heads * attention_head_size = hidden_size].
-        context = context.view(bs, seq_len, self.all_head_size)
+
+        # Weighted sum of values
+        context = torch.matmul(attn_probs, value)  # [bs, num_heads, seq_len, head_dim]
+        context = context.transpose(1, 2).contiguous()  # [bs, seq_len, num_heads, head_dim]
+        bs, seq_len, num_heads, head_dim = context.size()
+        context = context.view(bs, seq_len, num_heads * head_dim)  # [bs, seq_len, hidden_size]
         return context
 
     def forward(self, hidden_states, attention_mask):

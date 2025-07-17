@@ -68,6 +68,7 @@ class MultitaskBERT(nn.Module):
         ### TODO
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.sentiment_classifier = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
+        self.type_classifier = nn.Linear(BERT_HIDDEN_SIZE * 2, 26)
 
     def forward(self, input_ids, attention_mask):
         """Takes a batch of sentences and produces embeddings for them."""
@@ -126,7 +127,11 @@ class MultitaskBERT(nn.Module):
         Dataset: ETPC
         """
         ### TODO
-        raise NotImplementedError
+        emb1 = self.forward(input_ids_1, attention_mask_1)
+        emb2 = self.forward(input_ids_2, attention_mask_2)
+        feat = torch.cat([emb1, emb2], dim=-1)
+        feat = self.dropout(feat)
+        return self.type_classifier(feat)
 
 
 def save_model(model, optimizer, args, config, filepath):
@@ -257,7 +262,20 @@ def train_multitask(args):
         if args.task == "etpc" or args.task == "multitask":
             # Trains the model on the etpc dataset
             ### TODO
-            raise NotImplementedError
+            etpc_train_data = SentencePairDataset(etpc_train_data, args)
+            etpc_dev_data = SentencePairDataset(etpc_dev_data, args)
+            etpc_train_dataloader = DataLoader(
+                etpc_train_data,
+                shuffle=True,
+                batch_size=args.batch_size,
+                collate_fn=etpc_train_data.collate_fn,
+            )
+            etpc_dev_dataloader = DataLoader(
+                etpc_dev_data,
+                shuffle=False,
+                batch_size=args.batch_size,
+                collate_fn=etpc_dev_data.collate_fn,
+            )
 
         train_loss = train_loss / num_batches
 
@@ -290,7 +308,20 @@ def train_multitask(args):
             "sts": (sts_train_corr, sts_dev_corr),
             "qqp": (quora_train_acc, quora_dev_acc),
             "etpc": (etpc_train_acc, etpc_dev_acc),
-            "multitask": (0, 0),  # TODO
+            "multitask": (
+                np.mean([
+                    quora_train_acc or 0,
+                    sst_train_acc or 0,
+                    sts_train_corr or 0,
+                    etpc_train_acc or 0,
+                ]),
+                np.mean([
+                    quora_dev_acc or 0,
+                    sst_dev_acc or 0,
+                    sts_dev_corr or 0,
+                    etpc_dev_acc or 0,
+                ]),
+            ),  # TODO
         }[args.task]
 
         print(

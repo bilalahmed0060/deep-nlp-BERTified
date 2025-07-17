@@ -66,7 +66,8 @@ class MultitaskBERT(nn.Module):
             elif config.option == "finetune":
                 param.requires_grad = True
         ### TODO
-        raise NotImplementedError
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.sentiment_classifier = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
 
     def forward(self, input_ids, attention_mask):
         """Takes a batch of sentences and produces embeddings for them."""
@@ -76,8 +77,9 @@ class MultitaskBERT(nn.Module):
         # Here, you can start by just returning the embeddings straight from BERT.
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
-        ### TODO
-        raise NotImplementedError
+        ### TODO: Completed
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask) 
+        return outputs['pooler_output']
 
     def predict_sentiment(self, input_ids, attention_mask):
         """
@@ -87,8 +89,11 @@ class MultitaskBERT(nn.Module):
         Thus, your output should contain 5 logits for each sentence.
         Dataset: SST
         """
-        ### TODO
-        raise NotImplementedError
+        ### TODO: Completed
+        embed = self.forward(input_ids, attention_mask)
+        embed = self.dropout(embed)
+        logits = self.sentiment_classifier(embed)
+        return logits
 
     def predict_paraphrase(self, input_ids_1, attention_mask_1, input_ids_2, attention_mask_2):
         """

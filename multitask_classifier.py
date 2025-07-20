@@ -135,6 +135,7 @@ class MultitaskBERT(nn.Module):
 
 
 def save_model(model, optimizer, args, config, filepath):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     save_info = {
         "model": model.state_dict(),
         "optim": optimizer.state_dict(),
@@ -186,6 +187,22 @@ def train_multitask(args):
             shuffle=False,
             batch_size=args.batch_size,
             collate_fn=sst_dev_data.collate_fn,
+        )
+    
+    if args.task == "etpc" or args.task == "multitask":
+        etpc_train_data = SentencePairDataset(etpc_train_data, args)
+        etpc_dev_data = SentencePairDataset(etpc_dev_data, args)
+        etpc_train_dataloader = DataLoader(
+            etpc_train_data,
+            shuffle=True,
+            batch_size=args.batch_size,
+            collate_fn=etpc_train_data.collate_fn,
+        )
+        etpc_dev_dataloader = DataLoader(
+            etpc_dev_data,
+            shuffle=False,
+            batch_size=args.batch_size,
+            collate_fn=etpc_dev_data.collate_fn,
         )
 
     ### TODO
@@ -262,20 +279,23 @@ def train_multitask(args):
         if args.task == "etpc" or args.task == "multitask":
             # Trains the model on the etpc dataset
             ### TODO
-            etpc_train_data = SentencePairDataset(etpc_train_data, args)
-            etpc_dev_data = SentencePairDataset(etpc_dev_data, args)
-            etpc_train_dataloader = DataLoader(
-                etpc_train_data,
-                shuffle=True,
-                batch_size=args.batch_size,
-                collate_fn=etpc_train_data.collate_fn,
-            )
-            etpc_dev_dataloader = DataLoader(
-                etpc_dev_data,
-                shuffle=False,
-                batch_size=args.batch_size,
-                collate_fn=etpc_dev_data.collate_fn,
-            )
+            for batch in tqdm(
+                etpc_train_dataloader, desc=f"train-etpc-{epoch+1:02}", disable=TQDM_DISABLE
+            ):
+                b_ids1 = batch["token_ids_1"].to(device)
+                b_mask1 = batch["attention_mask_1"].to(device)
+                b_ids2 = batch["token_ids_2"].to(device)
+                b_mask2 = batch["attention_mask_2"].to(device)
+                b_labels = batch["labels"].float().to(device)
+
+                optimizer.zero_grad()
+                logits = model.predict_paraphrase_types(b_ids1, b_mask1, b_ids2, b_mask2)
+                loss = F.binary_cross_entropy_with_logits(logits, b_labels)
+                loss.backward()
+                optimizer.step()
+
+                train_loss += loss.item()
+                num_batches += 1
 
         train_loss = train_loss / num_batches
 

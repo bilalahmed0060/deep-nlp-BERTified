@@ -98,7 +98,7 @@ def transform_data(dataset, max_length=512):
     else:
         dataset = TensorDataset(input_ids, attention_mask)
 
-    return DataLoader(dataset, batch_size=16, shuffle=has_labels)
+    return DataLoader(dataset, batch_size=32, shuffle=has_labels)
 
 
 def train_model(model, train_data, dev_data, device):
@@ -113,9 +113,11 @@ def train_model(model, train_data, dev_data, device):
     Return the trained model.
     """
     ### TODO
-    optimizer = AdamW(model.parameters(), lr=5e-5)
+    optimizer = AdamW(model.parameters(), lr=1e-5)
     loss_fn = nn.BCELoss()
-    for epoch in range(1):
+    for epoch in range(5):
+        train_loss = 0
+        num_batches = 0
         model.train()
         for batch in tqdm(train_data, disable=TQDM_DISABLE):
             input_ids, attention_mask, labels = [b.to(device) for b in batch]
@@ -124,9 +126,12 @@ def train_model(model, train_data, dev_data, device):
             loss = loss_fn(outputs, labels)
             loss.backward()
             optimizer.step()
+            train_loss += loss.item()
+            num_batches += 1
         if dev_data is not None:
             acc, matt = evaluate_model(model, dev_data, device)
-            print(f"Epoch {epoch+1}: dev accuracy {acc:.3f}, MCC {matt:.3f}")
+            train_loss = train_loss / num_batches
+            print(f"Epoch {epoch+1}: dev accuracy :: {acc:.3f}, dev loss :: {train_loss:.3f}, MCC :: {matt:.3f}")
     return model
 
 
@@ -227,7 +232,7 @@ def finetune_paraphrase_detection(args):
 
     # TODO You might do a split of the train data into train/validation set here
     # (or in the csv files directly)
-    train_split = train_dataset.sample(frac=0.9, random_state=42)
+    train_split = train_dataset.sample(frac=0.8, random_state=42)
     dev_split = train_dataset.drop(train_split.index)
     train_data = transform_data(train_split)
     dev_data = transform_data(dev_split)

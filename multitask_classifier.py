@@ -411,14 +411,19 @@ def get_args():
     # default path of the --etpc_dev argument to your dev set.
     train_dataset = pd.read_csv("data/etpc-paraphrase-train.csv")
 
-    train_split = train_dataset.sample(frac=0.9, random_state=42)
+    train_split = train_dataset.sample(frac=0.8, random_state=42)
     dev_split   = train_dataset.drop(train_split.index)
 
+    tain_path = "data/etpc-paraphrase-train_minBert.csv"
     dev_path = "data/etpc-paraphrase-dev.csv"
+
     dev_split.to_csv(dev_path, index=False)
+    train_split.to_csv(tain_path, index=False)
+
     print(f"[ETPC] held‑out dev file written to {dev_path} ({len(dev_split)} rows)")
 
-    parser.add_argument("--etpc_train", type=str, default="data/etpc-paraphrase-train.csv")
+    # need to change the file path otherwise train and dev samples will overlap
+    parser.add_argument("--etpc_train", type=str, default="data/etpc-paraphrase-train_minBert.csv")
     parser.add_argument("--etpc_dev", type=str, default="data/etpc-paraphrase-dev.csv")
     parser.add_argument(
         "--etpc_test", type=str, default="data/etpc-paraphrase-detection-test-student.csv"

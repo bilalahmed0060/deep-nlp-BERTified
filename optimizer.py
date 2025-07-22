@@ -67,34 +67,32 @@ class AdamW(Optimizer):
                 # 4- After that main gradient-based update, update again using weight decay
                 #    (incorporating the learning rate again).
 
-                ### TODO
+                ### TODO: Completed
+                beta1, beta2 = group["betas"]
+                # print(f"parameters shape: {p.data.shape}") -->(2 3)
                 if len(state) == 0:
                     state["step"] = 0
-                    state["exp_avg"] = torch.zeros_like(p.data)
-                    state["exp_avg_sq"] = torch.zeros_like(p.data)
-                exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
-                beta1, beta2 = group["betas"]
+                    state["m"] = torch.zeros(2, 3)
+                    state["v"] = torch.zeros(2, 3)
 
+                m = state["m"]
+                v = state["v"]
                 state["step"] += 1
 
-                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
-                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+                m.mul_(beta1).add_(grad, alpha=1 - beta1)
+                v.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
                 if group["correct_bias"]:
-                    bias_correction1 = 1 - beta1 ** state["step"]
-                    bias_correction2 = 1 - beta2 ** state["step"]
-                    step_size = (
-                        alpha
-                        * math.sqrt(bias_correction2)
-                        / bias_correction1
-                    )
+                    bias_correction1 = 1-beta1**state["step"]
+                    bias_correction2 = 1-beta2**state["step"]
+                    alpha_t = (alpha*math.sqrt(bias_correction2)/bias_correction1)
                 else:
-                    step_size = alpha
+                    alpha_t = alpha
 
-                denom = exp_avg_sq.sqrt().add_(group["eps"])
-                p.data.addcdiv_(exp_avg, denom, value=-step_size)
+                denomirator = v.sqrt().add_(group["eps"])
+                p.data.addcdiv_(m, denomirator, value=-alpha_t)
 
                 if group["weight_decay"] != 0:
-                    p.data.add_(p.data, alpha=-alpha * group["weight_decay"])
+                    p.data.add_(p.data, alpha=-alpha*group["weight_decay"])
                     
         return loss

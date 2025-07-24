@@ -9,7 +9,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, BartForConditionalGeneration
 
-from optimizer import AdamW
+# from optimizer import AdamW
+from transformers import AdamW
 
 
 TQDM_DISABLE = False
@@ -74,7 +75,7 @@ def transform_data(dataset, max_length=256, shuffle=True, batch_size=8):
     return DataLoader(tensor_dataset, batch_size=batch_size, shuffle=shuffle)
 
 
-def train_model(model, train_data, device, epochs=5, learning_rate=1e-5):
+def train_model(model, train_data, device,dev_data, epochs=5, learning_rate=1e-5):
     """
     Fine-tune BART on the training dataset.
     """
@@ -106,6 +107,10 @@ def train_model(model, train_data, device, epochs=5, learning_rate=1e-5):
 
         # Save checkpoint
         torch.save(model.state_dict(), f"bart_generation_epoch_{epoch+1}.pt")
+        
+        tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large", local_files_only=True)
+        bleu_score = evaluate_model(model, dev_data, device, tokenizer)
+        
 
     print("Training complete.")
     return model
@@ -113,12 +118,14 @@ def train_model(model, train_data, device, epochs=5, learning_rate=1e-5):
 
 def evaluate_model(model, dev_data, device, tokenizer):
     """
-    Evaluate the model's BLEU score on the dev set.
+    Evaluate the model's performance using BLEU and penalized BLEU score.
+    dev_data is a DataLoader that yields batches of (input_ids, attention_mask, labels).
     """
     model.eval()
     bleu = BLEU()
     predictions = []
     references = []
+    inputs = []
 
     with torch.no_grad():
         for batch in tqdm(dev_data, desc="Evaluating BLEU", disable=TQDM_DISABLE):
@@ -137,23 +144,33 @@ def evaluate_model(model, dev_data, device, tokenizer):
             )
 
             decoded_preds = tokenizer.batch_decode(
-                outputs,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=True
+                outputs, skip_special_tokens=True, clean_up_tokenization_spaces=True
             )
             decoded_refs = tokenizer.batch_decode(
-                labels,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=True
+                labels, skip_special_tokens=True, clean_up_tokenization_spaces=True
+            )
+            decoded_inputs = tokenizer.batch_decode(
+                input_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
             )
 
             predictions.extend(decoded_preds)
             references.extend(decoded_refs)
+            inputs.extend(decoded_inputs)
 
-    # Compute BLEU score
-    bleu_score = bleu.corpus_score(predictions, [references]).score
-    print(f"\n✅ Baseline BLEU Score on dev set: {bleu_score:.2f}")
-    return bleu_score
+    # BLEU vs reference (reward good paraphrases)
+    bleu_score_reference = bleu.corpus_score(references, [predictions]).score
+    # BLEU vs input (penalize copying)
+    bleu_score_inputs = 100 - bleu.corpus_score(inputs, [predictions]).score
+
+    # Penalized BLEU
+    penalized_bleu = bleu_score_reference * bleu_score_inputs / 52
+
+    print(f"📊 BLEU vs References: {bleu_score_reference:.2f}")
+    print(f"📉 Inverted BLEU vs Inputs: {bleu_score_inputs:.2f}")
+    print(f"🏆 Penalized BLEU Score: {penalized_bleu:.2f}")
+
+    return penalized_bleu
+
 
 
 def test_model(test_data, test_ids, device, model, tokenizer):
@@ -229,11 +246,8 @@ def finetune_paraphrase_generation(args):
 
     print(f"Training samples: {len(train_split)}, Dev samples: {len(dev_split)}")
 
-    model = train_model(model, train_data, device)
+    model = train_model(model, train_data, device,dev_data)
 
-    # Evaluate BLEU on dev set
-    bleu_score = evaluate_model(model, dev_data, device, tokenizer)
-    print(f"✅ Baseline BLEU on dev set: {bleu_score:.2f}")
 
     # Generate predictions for test set
     test_dataset = pd.read_csv("data/etpc-paraphrase-generation-test-student.csv")
@@ -251,3 +265,5 @@ if __name__ == "__main__":
     args = get_args()
     seed_everything(args.seed)
     finetune_paraphrase_generation(args)
+
+

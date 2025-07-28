@@ -1,4 +1,6 @@
 #!/bin/bash -i
+module load miniforge3
+
 # Function to check if conda is installed
 check_conda_installed() {
     if command -v conda &> /dev/null; then

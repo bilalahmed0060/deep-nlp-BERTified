@@ -143,6 +143,7 @@ class MultitaskBERT(nn.Module):
 
 
 def save_model(model, optimizer, args, config, filepath):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     save_info = {
         "model": model.state_dict(),
         "optim": optimizer.state_dict(),
@@ -194,24 +195,6 @@ def train_multitask(args):
             shuffle=False,
             batch_size=args.batch_size,
             collate_fn=sst_dev_data.collate_fn,
-        )
-    
-    # QQP dataset
-    if args.task == "qqp" or args.task == "multitask":
-        quora_train_data = SentencePairDataset(quora_train_data, args)
-        quora_dev_data = SentencePairDataset(quora_dev_data, args)
-
-        quora_train_dataloader = DataLoader(
-            quora_train_data,
-            shuffle=True,
-            batch_size=args.batch_size,
-            collate_fn=quora_train_data.collate_fn,
-        )
-        quora_dev_dataloader = DataLoader(
-            quora_dev_data,
-            shuffle=False,
-            batch_size=args.batch_size,
-            collate_fn=quora_dev_data.collate_fn,
         )
 
     ### TODO
@@ -313,20 +296,23 @@ def train_multitask(args):
         if args.task == "etpc" or args.task == "multitask":
             # Trains the model on the etpc dataset
             ### TODO
-            etpc_train_data = SentencePairDataset(etpc_train_data, args)
-            etpc_dev_data = SentencePairDataset(etpc_dev_data, args)
-            etpc_train_dataloader = DataLoader(
-                etpc_train_data,
-                shuffle=True,
-                batch_size=args.batch_size,
-                collate_fn=etpc_train_data.collate_fn,
-            )
-            etpc_dev_dataloader = DataLoader(
-                etpc_dev_data,
-                shuffle=False,
-                batch_size=args.batch_size,
-                collate_fn=etpc_dev_data.collate_fn,
-            )
+            for batch in tqdm(
+                etpc_train_dataloader, desc=f"train-etpc-{epoch+1:02}", disable=TQDM_DISABLE
+            ):
+                b_ids1 = batch["token_ids_1"].to(device)
+                b_mask1 = batch["attention_mask_1"].to(device)
+                b_ids2 = batch["token_ids_2"].to(device)
+                b_mask2 = batch["attention_mask_2"].to(device)
+                b_labels = batch["labels"].float().to(device)
+
+                optimizer.zero_grad()
+                logits = model.predict_paraphrase_types(b_ids1, b_mask1, b_ids2, b_mask2)
+                loss = F.binary_cross_entropy_with_logits(logits, b_labels)
+                loss.backward()
+                optimizer.step()
+
+                train_loss += loss.item()
+                num_batches += 1
 
         train_loss = train_loss / num_batches
 
@@ -443,14 +429,19 @@ def get_args():
     # default path of the --etpc_dev argument to your dev set.
     train_dataset = pd.read_csv("data/etpc-paraphrase-train.csv")
 
-    train_split = train_dataset.sample(frac=0.9, random_state=42)
+    train_split = train_dataset.sample(frac=0.8, random_state=42)
     dev_split   = train_dataset.drop(train_split.index)
 
+    tain_path = "data/etpc-paraphrase-train_minBert.csv"
     dev_path = "data/etpc-paraphrase-dev.csv"
+
     dev_split.to_csv(dev_path, index=False)
+    train_split.to_csv(tain_path, index=False)
+
     print(f"[ETPC] held‑out dev file written to {dev_path} ({len(dev_split)} rows)")
 
-    parser.add_argument("--etpc_train", type=str, default="data/etpc-paraphrase-train.csv")
+    # need to change the file path otherwise train and dev samples will overlap
+    parser.add_argument("--etpc_train", type=str, default="data/etpc-paraphrase-train_minBert.csv")
     parser.add_argument("--etpc_dev", type=str, default="data/etpc-paraphrase-dev.csv")
     parser.add_argument(
         "--etpc_test", type=str, default="data/etpc-paraphrase-detection-test-student.csv"

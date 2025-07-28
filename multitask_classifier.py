@@ -69,6 +69,8 @@ class MultitaskBERT(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.sentiment_classifier = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
         self.type_classifier = nn.Linear(BERT_HIDDEN_SIZE * 2, 26)
+        self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
+
 
     def forward(self, input_ids, attention_mask):
         """Takes a batch of sentences and produces embeddings for them."""
@@ -103,8 +105,14 @@ class MultitaskBERT(nn.Module):
         during evaluation, and handled as a logit by the appropriate loss function.
         Dataset: Quora
         """
-        ### TODO
-        raise NotImplementedError
+        ### TODO: Completed
+        emb1 = self.forward(input_ids_1, attention_mask_1)
+        emb2 = self.forward(input_ids_2, attention_mask_2)
+        combined = torch.cat((emb1, emb2), dim=-1)
+        combined = self.dropout(combined)
+        logits = self.paraphrase_classifier(combined)
+        return logits.squeeze(-1)  # shape: (batch_size,)
+
 
     def predict_similarity(self, input_ids_1, attention_mask_1, input_ids_2, attention_mask_2):
         """
@@ -187,6 +195,24 @@ def train_multitask(args):
             batch_size=args.batch_size,
             collate_fn=sst_dev_data.collate_fn,
         )
+    
+    # QQP dataset
+    if args.task == "qqp" or args.task == "multitask":
+        quora_train_data = SentencePairDataset(quora_train_data, args)
+        quora_dev_data = SentencePairDataset(quora_dev_data, args)
+
+        quora_train_dataloader = DataLoader(
+            quora_train_data,
+            shuffle=True,
+            batch_size=args.batch_size,
+            collate_fn=quora_train_data.collate_fn,
+        )
+        quora_dev_dataloader = DataLoader(
+            quora_dev_data,
+            shuffle=False,
+            batch_size=args.batch_size,
+            collate_fn=quora_dev_data.collate_fn,
+        )
 
     ### TODO
     #   Load data for the other datasets
@@ -256,8 +282,33 @@ def train_multitask(args):
 
         if args.task == "qqp" or args.task == "multitask":
             # Trains the model on the qqp dataset
-            ### TODO
-            raise NotImplementedError
+            #print("here")
+            #print(quora_train_dataloader)
+            for batch in tqdm(
+                quora_train_dataloader, desc=f"train-{epoch+1:02}", disable=TQDM_DISABLE
+            ):
+                b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (
+                    batch["token_ids_1"],
+                    batch["attention_mask_1"],
+                    batch["token_ids_2"],
+                    batch["attention_mask_2"],
+                    batch["labels"],
+                )
+
+                b_ids_1 = b_ids_1.to(device)
+                b_mask_1 = b_mask_1.to(device)
+                b_ids_2 = b_ids_2.to(device)
+                b_mask_2 = b_mask_2.to(device)
+                b_labels = b_labels.to(device).float()
+
+                optimizer.zero_grad()
+                logits = model.predict_paraphrase(b_ids_1, b_mask_1, b_ids_2, b_mask_2)
+                loss = F.binary_cross_entropy_with_logits(logits, b_labels)
+                loss.backward()
+                optimizer.step()
+
+                train_loss += loss.item()
+                num_batches += 1
 
         if args.task == "etpc" or args.task == "multitask":
             # Trains the model on the etpc dataset
@@ -330,6 +381,7 @@ def train_multitask(args):
 
         if dev_acc > best_dev_acc:
             best_dev_acc = dev_acc
+            os.makedirs(os.path.dirname(args.filepath), exist_ok=True)
             save_model(model, optimizer, args, config, args.filepath)
 
 

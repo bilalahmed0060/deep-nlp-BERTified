@@ -72,8 +72,8 @@ class AdamW(Optimizer):
                 # print(f"parameters shape: {p.data.shape}") -->(2 3)
                 if len(state) == 0:
                     state["step"] = 0
-                    state["m"] = torch.zeros(2, 3)
-                    state["v"] = torch.zeros(2, 3)
+                    state["m"] = torch.zeros_like(p.data)
+                    state["v"] = torch.zeros_like(p.data)
 
                 m = state["m"]
                 v = state["v"]

@@ -1,16 +1,15 @@
-    import argparse
-    import random
+import argparse
+import random
 
-    import numpy as np
-    import pandas as pd
-    import torch
-    from sacrebleu.metrics import BLEU
-    from torch.utils.data import DataLoader, TensorDataset
-    from tqdm import tqdm
-    from transformers import AutoTokenizer, BartForConditionalGeneration, AdamW
+import numpy as np
+import pandas as pd
+import torch
+from sacrebleu.metrics import BLEU
+from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
+from transformers import AutoTokenizer, BartForConditionalGeneration, AdamW
 
-
-    TQDM_DISABLE = False
+TQDM_DISABLE = False
 
 
 def transform_data(dataset, max_length=256, shuffle=True, batch_size=8):
@@ -78,7 +77,7 @@ def train_model(model, train_data, dev_data, device, tokenizer):
     """
     # Training parameters
     learning_rate = 1e-5
-    num_epochs = 20
+    num_epochs = 1
     
     # Optimizer
     optimizer = AdamW(model.parameters(), lr=learning_rate)
@@ -135,6 +134,7 @@ def train_model(model, train_data, dev_data, device, tokenizer):
     if best_bleu > 0:
         model = BartForConditionalGeneration.from_pretrained("facebook/bart-large")
         model.load_state_dict(torch.load("best_bart_model.pt"))
+        model.to(device)
 
     
     return model
@@ -192,7 +192,7 @@ def evaluate_model(model, test_data, device, tokenizer):
     the column "sentence2" contains all target sentences
     """
     model.eval()
-    bleu = BLEU()
+    bleu = BLEU()   
     predictions = []
 
     dataloader = transform_data(test_data, shuffle=False)
@@ -305,7 +305,7 @@ def finetune_paraphrase_generation(args):
     test_results = test_model(test_dataloader, test_ids, device, model, tokenizer)
     
 
-    test_results.to_csv("predictions/bart/etpc-paraphrase-generation-test-output.csv", index=False)
+    test_results.to_csv("predictions/bart/etpc-paraphrase-generation-test-output-check.csv", index=False)
     
 
 

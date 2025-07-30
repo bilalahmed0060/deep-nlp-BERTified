@@ -70,6 +70,7 @@ class MultitaskBERT(nn.Module):
         self.sentiment_classifier = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
         self.type_classifier = nn.Linear(BERT_HIDDEN_SIZE * 2, 26)
         self.paraphrase_classifier = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
+        self.similarity_regressor = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
 
 
     def forward(self, input_ids, attention_mask):
@@ -121,8 +122,16 @@ class MultitaskBERT(nn.Module):
         it will be handled as a logit by the appropriate loss function.
         Dataset: STS
         """
-        ### TODO
-        raise NotImplementedError
+        ### TODO: Completed
+
+        emb1 = self.forward(input_ids_1, attention_mask_1)
+        emb2 = self.forward(input_ids_2, attention_mask_2)
+        feat = torch.cat([emb1, emb2], dim=-1)
+        feat = self.dropout(feat)
+        sim_score = self.similarity_regressor(feat)
+        return 5 * torch.sigmoid(sim_score).squeeze(-1)
+
+        # raise NotImplementedError
 
     def predict_paraphrase_types(
         self, input_ids_1, attention_mask_1, input_ids_2, attention_mask_2
@@ -215,6 +224,24 @@ def train_multitask(args):
             collate_fn=quora_dev_data.collate_fn,
         )
 
+    #STS Dataset
+    if args.task == "sts" or args.task == "multitask":
+        sts_train_data = SentencePairDataset(sts_train_data, args)
+        sts_dev_data = SentencePairDataset(sts_dev_data, args)
+
+        sts_train_dataloader = DataLoader(
+            sts_train_data,
+            shuffle=True,
+            batch_size=args.batch_size,
+            collate_fn=sts_train_data.collate_fn,
+        )
+        sts_dev_dataloader = DataLoader(
+            sts_dev_data,
+            shuffle=False,
+            batch_size=args.batch_size,
+            collate_fn=sts_dev_data.collate_fn,
+        )
+
 
     ### TODO
     #   Load data for the other datasets
@@ -279,8 +306,33 @@ def train_multitask(args):
 
         if args.task == "sts" or args.task == "multitask":
             # Trains the model on the sts dataset
-            ### TODO
-            raise NotImplementedError
+            ### TODO: Completed
+            for batch in tqdm(
+                sts_train_dataloader, desc=f"train-sts-{epoch+1:02}", disable=TQDM_DISABLE
+            ):
+                b_ids1, b_mask1, b_ids2, b_mask2, b_labels = (
+                    batch["token_ids_1"].to(device),
+                    batch["attention_mask_1"].to(device),
+                    batch["token_ids_2"].to(device),
+                    batch["attention_mask_2"].to(device),
+                    batch["labels"].to(device),
+                )
+
+                b_ids1 = b_ids1.to(device)
+                b_mask1 = b_mask1.to(device)
+                b_ids2 = b_ids2.to(device)
+                b_mask2 = b_mask2.to(device)
+                b_labels = b_labels.to(device)
+
+                optimizer.zero_grad()
+                preds = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
+                loss = F.mse_loss(preds, b_labels.to(torch.float))
+                loss.backward()
+                optimizer.step()
+
+                train_loss += loss.item()
+                num_batches += 1
+                # raise NotImplementedError
 
         if args.task == "qqp" or args.task == "multitask":
             # Trains the model on the qqp dataset

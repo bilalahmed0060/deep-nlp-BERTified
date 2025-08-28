@@ -31,6 +31,7 @@ echo "Latest Commit: $(git rev-parse --short HEAD)"
 echo -e "Uncommitted Changes: $(git status --porcelain | wc -l)\n"
 
 # Run the script:
-python -u multitask_classifier.py --use_gpu --local_files_only --option finetune --task sst --hidden_dropout_prob 0.1
+# python -u multitask_classifier.py --use_gpu --local_files_only --option finetune --task sst --hidden_dropout_prob 0.1
 # python -u multitask_classifier.py --use_gpu --local_files_only --option finetune --task etpc --hidden_dropout_prob 0.1 --batch_size 32
-# python bart_detection.py --use_gpu
+# python finetune_bart_detection-asl.py --gamma_neg 2.0 --clip 0.1 --logit_adjust_tau 0.5 --use_weighted_sampler --use_gpu
+python finetune_bart_detection-dbloss.py --alpha 0.1 --beta 10 --mu 0.9 --lam 2.0 --kappa 0.05 --gamma 0.0 --logit_adjust_tau 0.5 --use_weighted_sampler --use_gpu

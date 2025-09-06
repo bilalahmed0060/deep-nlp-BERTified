@@ -33,31 +33,31 @@ Parts of the scripts and code were altered by [Jan Philip Wahle](https://jpwahle
 
 The project was modified by [Niklas Bauer](https://github.com/ItsNiklas/) for the 2025 DNLP course at the University of Göttingen.
 
-####  5) Bart paraphrase type detection
+###  5) Bart paraphrase type detection
 
-1) Baseline
+#### **Baseline**
 
 Model. facebook/bart-large encoder + linear head; pooled by taking token 0; trained with BCE on probabilities.
 Thresholding. Fixed 0.5 per class.
 Result (dev, 5 epochs):
 
-Accuracy: 0.907
+Accuracy: **0.907**
 
 MCC (mean per class): 0.073
 
-##### What problem are we facing
+#### **What problem are we facing**
 
-The core issues in our setting
+The core issues in our setting:
 
-Negative dominance: Each example has a few positives and many negatives per class → BCE over-weights easy negatives.
+1) Negative dominance: Each example has a few positives and many negatives per class → BCE over-weights easy negatives.
 
-Long-tailed labels: Head types dominate learning; tail types are ignored.
+2) Long-tailed labels: Head types dominate learning; tail types are ignored.
 
-Label co-occurrence: Simple re-sampling can oversample head labels that co-occur with rare ones, weakening the intended effect.
+3) Label co-occurrence: Simple re-sampling can oversample head labels that co-occur with rare ones, weakening the intended effect.
 
 Hence we decided to change the loss function mainly to cater for these problems above.
 
-2) What loss functions we decided to go with:
+What loss functions we decided to go with:
 - Asymmetric Loss (ASL) addresses the positive/negative imbalance by down-weighting easy negatives while retaining strong gradients for positives; this consistently improves multi-label classification in the long-tail regime. 
 
 - Distribution-Balanced Loss (DB) explicitly re-balances per-label contributions per instance (accounting for co-occurrence) and applies Negative-Tolerant Regularization to mitigate over-suppression of negatives. EMNLP-21 shows DB is particularly effective for multi-label text with long-tailed distributions. 
@@ -66,21 +66,18 @@ Hence we decided to change the loss function mainly to cater for these problems 
 
 Therefore we chose ASL as our primary loss (strong empirical gains on tail labels) and DB Loss as a principled alternative targeting co-occurrence + negative dominance, validated for multi-label NLP.
 
-3) What we changed (beyond the loss)
+#### **What we changed (beyond the loss)**
 
 To make the losses effective and to optimize MCC, we also improved representation, calibration, and sampling:
 
-Masked mean pooling for BART (instead of using token 0): stable sentence pair representation for BART encoders.
+- Masked mean pooling for BART (instead of using token 0): stable sentence pair representation for BART encoders.
+- Train on logits; apply sigmoid only at eval/test (better numerical stability).
+- Prior-aware logit adjustment (inference-time): subtract τ·logit(prior) per class so rare labels need less evidence (helps recall on tails). We sweep τ∈{0.25,0.5,0.75,1.0}.
+- Per-class threshold tuning on dev to directly maximize per-class MCC (grid search per label).
+- WeightedRandomSampler at instance level: instance weight = sum of inverse class priors of its positive labels, to surface tail-heavy examples without naive per-label oversampling.
 
-Train on logits; apply sigmoid only at eval/test (better numerical stability).
+#### **Results**
 
-Prior-aware logit adjustment (inference-time): subtract τ·logit(prior) per class so rare labels need less evidence (helps recall on tails). We sweep τ∈{0.25,0.5,0.75,1.0}.
-
-Per-class threshold tuning on dev to directly maximize per-class MCC (grid search per label).
-
-WeightedRandomSampler at instance level: instance weight = sum of inverse class priors of its positive labels, to surface tail-heavy examples without naive per-label oversampling.
-
-4) Results
 All runs are 5 epochs on the same train/dev split.
 
 Summary table:
@@ -92,28 +89,20 @@ Summary table:
 | **ASL**           | γ_pos=0.0, **γ_neg=2.0**, **clip=0.1**                                       | **WeightedRandomSampler**, logit-adj **τ=0.5**|    0.346      |    0.107      |     **0.818**   |     **0.371**   |
 
 
-- Notes:
-• “Fixed 0.5” uses a single threshold for every label. “Threshold-tuned” picks a threshold per label to maximize dev MCC (after optional logit adjustment).
-• DB Loss: raw epoch-5 MCC (fixed 0.5) rose from ~0.001 → 0.204 during training; with calibration (logit adjust τ=0.5 + per-class thresholds) it reached 0.323.
-• ASL: raw epoch-5 MCC (fixed 0.5) reached 0.276; with calibration (τ=0.5 + per-class thresholds) it reached 0.382.
-• Also it can be noted that there is a comprimise between the accuracy and the MCC, as the model that predicts the same type predicts high accuracy (most labels are negatives) but near-zero MCC—i.e., it completely fails rare types. So lower accuracy with higher MCC usually means you’re finally catching rare positives instead of guessing “negative” everywhere.
+**Notes**:
+- “Fixed 0.5” uses a single threshold for every label. “Threshold-tuned” picks a threshold per label to maximize dev MCC (after optional logit adjustment).
+- DB Loss: raw epoch-5 MCC (fixed 0.5) rose from ~0.001 → 0.204 during training; with calibration (logit adjust τ=0.5 + per-class thresholds) it reached 0.323.
+- ASL: raw epoch-5 MCC (fixed 0.5) reached 0.276; with calibration (τ=0.5 + per-class thresholds) it reached 0.382.
+- Also it can be noted that there is a comprimise between the accuracy and the MCC, as the model that predicts the same type predicts high accuracy (most labels are negatives) but near-zero MCC—i.e., it completely fails rare types. So lower accuracy with higher MCC usually means you’re finally catching rare positives instead of guessing “negative” everywhere.
 
-5) Takeaways:
-4.2 Takeaways
+#### Takeaways
+- Loss matters: Replacing BCE with ASL or DB increases tail recall and MCC markedly.
+- Calibration matters even more: Per-class thresholds + τ-adjustment roughly doubled MCC vs fixed 0.5.
+- ASL > DB on our data: ASL delivered the best tuned MCC (0.382). This aligns with reports that ASL excels when negative dominance is the main bottleneck. 
+- DB is competitive and theoretically appealing when label co-occurrence is severe; EMNLP-21 shows DB’s advantages for multi-label text, which we partially observe (MCC 0.323 vs baseline 0.073).
 
-Loss matters: Replacing BCE with ASL or DB increases tail recall and MCC markedly.
-
-Calibration matters even more: Per-class thresholds + τ-adjustment roughly doubled MCC vs fixed 0.5.
-
-ASL > DB on our data: ASL delivered the best tuned MCC (0.382). This aligns with reports that ASL excels when negative dominance is the main bottleneck. 
-
-DB is competitive and theoretically appealing when label co-occurrence is severe; EMNLP-21 shows DB’s advantages for multi-label text, which we partially observe (MCC 0.323 vs baseline 0.073).
-
-6) References
-Asymmetric Loss (ASL): Ridnik et al., Asymmetric Loss for Multi-Label Classification, ICCV 2021. [CVF open access](https://openaccess.thecvf.com/content/ICCV2021/papers/Ridnik_Asymmetric_Loss_for_Multi-Label_Classification_ICCV_2021_paper.pdf)
-
-Distribution-Balanced Loss (DB): Wu et al., Distribution-Balanced Loss for Multi-Label Classification in Long-Tailed Datasets, ECCV 2020 (and arXiv). [ECVA](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123490154.pdf), [arXiv](https://arxiv.org/abs/2007.09654)
-
-DB for multi-label text: Huang et al., Balancing Methods for Multi-Label Text Classification with Long-Tailed Class Distribution, EMNLP 2021. [ACL Anthology](https://aclanthology.org/2021.emnlp-main.643/)
-
-Class-Balanced Loss (background): Cui et al., CVPR 2019. [CVF Open Access](https://openaccess.thecvf.com/content_CVPR_2019/papers/Cui_Class-Balanced_Loss_Based_on_Effective_Number_of_Samples_CVPR_2019_paper.pdf)
+#### References
+- Asymmetric Loss (ASL): Ridnik et al., Asymmetric Loss for Multi-Label Classification, ICCV 2021. [CVF open access](https://openaccess.thecvf.com/content/ICCV2021/papers/Ridnik_Asymmetric_Loss_for_Multi-Label_Classification_ICCV_2021_paper.pdf)
+- Distribution-Balanced Loss (DB): Wu et al., Distribution-Balanced Loss for Multi-Label Classification in Long-Tailed Datasets, ECCV 2020 (and arXiv). [ECVA](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123490154.pdf), [arXiv](https://arxiv.org/abs/2007.09654)
+- DB for multi-label text: Huang et al., Balancing Methods for Multi-Label Text Classification with Long-Tailed Class Distribution, EMNLP 2021. [ACL Anthology](https://aclanthology.org/2021.emnlp-main.643/)
+- Class-Balanced Loss (background): Cui et al., CVPR 2019. [CVF Open Access](https://openaccess.thecvf.com/content_CVPR_2019/papers/Cui_Class-Balanced_Loss_Based_on_Effective_Number_of_Samples_CVPR_2019_paper.pdf)

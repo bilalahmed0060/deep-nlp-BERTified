@@ -85,17 +85,18 @@ All runs are 5 epochs on the same train/dev split.
 
 Summary table:
 
-| Method             | Extra tricks                | Dev accuracy | Dev MCC (fixed 0.5) | Dev MCC (threshold-tuned) |
-| ------------------ | --------------------------- | -----------: | ------------------: | ------------------------: |
-| **Baseline (BCE)** | none                        |        0.907 |           **0.073** |                         — |
-| **DB Loss**        | τ=0.5, per-class thresholds |        0.762 |               0.148 |                 **0.296** |
-| **ASL**            | τ=0.5, per-class thresholds |        0.431 |               0.139 |                 **0.434** |
+| Method            | Loss Params                                                                 | Extras                                        | Dev Acc (0.5) | Dev MCC (0.5) | Dev Acc (tuned) | Dev MCC (tuned) |
+|-------------------|------------------------------------------------------------------------------|-----------------------------------------------|:-------------:|:-------------:|:---------------:|:---------------:|
+| **Baseline (BCE)**| —                                                                            | token-0 pooling, fixed 0.5 thresholds         |    0.907      |    0.073      |       —         |       —         |
+| **DB Loss**       | α=0.1, β=10, **μ=0.9**, λ=2.0, κ=0.05, γ=0.0 (DB-0FL)                        | **WeightedRandomSampler**, logit-adj **τ=0.5**|    0.770      |    0.157      |     **0.780**   |     **0.323**   |
+| **ASL**           | γ_pos=0.0, **γ_neg=2.0**, **clip=0.1**                                       | **WeightedRandomSampler**, logit-adj **τ=0.5**|    0.346      |    0.107      |     **0.818**   |     **0.371**   |
 
 
 - Notes:
 • “Fixed 0.5” uses a single threshold for every label. “Threshold-tuned” picks a threshold per label to maximize dev MCC (after optional logit adjustment).
-• For DB, raw epoch-5 MCC (fixed 0.5) rose from ~0.000 to 0.209 during training; with calibration it reached 0.296.
-• For ASL, raw epoch-5 MCC reached 0.340; with calibration it reached 0.434.
+• DB Loss: raw epoch-5 MCC (fixed 0.5) rose from ~0.001 → 0.204 during training; with calibration (logit adjust τ=0.5 + per-class thresholds) it reached 0.323.
+• ASL: raw epoch-5 MCC (fixed 0.5) reached 0.276; with calibration (τ=0.5 + per-class thresholds) it reached 0.382.
+• Also it can be noted that there is a comprimise between the accuracy and the MCC, as the model that predicts the same type predicts high accuracy (most labels are negatives) but near-zero MCC—i.e., it completely fails rare types. So lower accuracy with higher MCC usually means you’re finally catching rare positives instead of guessing “negative” everywhere.
 
 5) Takeaways:
 4.2 Takeaways
@@ -104,9 +105,9 @@ Loss matters: Replacing BCE with ASL or DB increases tail recall and MCC markedl
 
 Calibration matters even more: Per-class thresholds + τ-adjustment roughly doubled MCC vs fixed 0.5.
 
-ASL > DB on our data: ASL delivered the best tuned MCC (0.434). This aligns with reports that ASL excels when negative dominance is the main bottleneck. 
+ASL > DB on our data: ASL delivered the best tuned MCC (0.382). This aligns with reports that ASL excels when negative dominance is the main bottleneck. 
 
-DB is competitive and theoretically appealing when label co-occurrence is severe; EMNLP-21 shows DB’s advantages for multi-label text, which we partially observe (MCC 0.296 vs baseline 0.073).
+DB is competitive and theoretically appealing when label co-occurrence is severe; EMNLP-21 shows DB’s advantages for multi-label text, which we partially observe (MCC 0.323 vs baseline 0.073).
 
 6) References
 Asymmetric Loss (ASL): Ridnik et al., Asymmetric Loss for Multi-Label Classification, ICCV 2021. [CVF open access](https://openaccess.thecvf.com/content/ICCV2021/papers/Ridnik_Asymmetric_Loss_for_Multi-Label_Classification_ICCV_2021_paper.pdf)

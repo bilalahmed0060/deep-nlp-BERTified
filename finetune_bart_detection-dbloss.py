@@ -11,28 +11,16 @@ from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from tqdm import tqdm
 from transformers import AutoTokenizer, BartModel
 from sklearn.metrics import matthews_corrcoef
-
-# --- Optimizer import (keeps your local optimizer.py, falls back otherwise) ---
-try:
-    from optimizer import AdamW  # your local optimizer module
-except Exception:
-    try:
-        from torch.optim import AdamW  # fallback
-    except Exception:
-        from transformers.optimization import AdamW  # last resort
+from optimizer import AdamW
 
 TQDM_DISABLE = False
 
-# =========================
 # Label space (drop: 12,19,20,23,27)
-# =========================
 _VALID_TYPES = [i for i in range(1, 32) if i not in {12, 19, 20, 23, 27}]
 _TYPE_TO_IDX = {t: i for i, t in enumerate(_VALID_TYPES)}
-_NUM_CLASSES = len(_VALID_TYPES)  # 26
+_NUM_CLASSES = len(_VALID_TYPES)
 
-# =========================
 # Model: BART + masked-mean pooling (returns LOGITS)
-# =========================
 class BartWithClassifier(nn.Module):
     def __init__(self, num_labels=_NUM_CLASSES, dropout=0.1):
         super().__init__()
@@ -55,9 +43,7 @@ class BartWithClassifier(nn.Module):
         logits = self.classifier(self.dropout(pooled))       # [B, C]
         return logits
 
-# =========================
 # Distribution-Balanced Loss (DBLoss)
-# =========================
 class DBLoss(nn.Module):
     """
     Distribution-Balanced Loss for multi-label:
@@ -90,18 +76,18 @@ class DBLoss(nn.Module):
 
         counts = class_counts.clone().float()
         counts = torch.clamp(counts, min=1.0)               # avoid zero
-        self.register_buffer("class_counts", counts)        # [C]
-        self.register_buffer("inv_counts", 1.0 / counts)    # [C]
+        self.register_buffer("class_counts", counts)
+        self.register_buffer("inv_counts", 1.0 / counts)
 
         self.N_instances = None
         self.bias_ready = False
-        self.register_buffer("v", torch.zeros_like(counts)) # class-specific bias [C]
+        self.register_buffer("v", torch.zeros_like(counts))
 
     def set_num_instances(self, N_instances: int):
         self.N_instances = max(int(N_instances), 1)
-        p = self.class_counts / float(self.N_instances)     # p_i = n_i / N_instances
+        p = self.class_counts / float(self.N_instances)
         p = torch.clamp(p, min=1e-6, max=1 - 1e-6)
-        b_hat = torch.log(p / (1.0 - p))                    # log-odds
+        b_hat = torch.log(p / (1.0 - p))
         self.v = -self.kappa * b_hat
         self.bias_ready = True
 
@@ -112,23 +98,23 @@ class DBLoss(nn.Module):
         B, C = logits.shape
         device = logits.device
 
-        inv_counts = self.inv_counts.to(device)             # [C]
-        v = self.v.to(device).view(1, C)                    # [1, C]
+        inv_counts = self.inv_counts.to(device) 
+        v = self.v.to(device).view(1, C)
         y = targets
 
-        # ---- Re-balanced weighting r_hat (per sample/label) ----
-        pos_mask = (y > 0).float()                          # [B, C]
-        denom = torch.matmul(pos_mask, inv_counts)          # [B]
+        # Re-balanced weighting r_hat (per sample/label)
+        pos_mask = (y > 0).float() 
+        denom = torch.matmul(pos_mask, inv_counts)
         default_denom = inv_counts.sum()
         denom = torch.where(denom > 0, denom, torch.full_like(denom, default_denom))
         denom = denom.view(B, 1)
-        r = inv_counts.view(1, C) / denom                   # [B, C]
+        r = inv_counts.view(1, C) / denom 
         r_hat = self.alpha + torch.sigmoid(self.beta * (r - self.mu))
 
-        # ---- Negative-tolerant regularization (shift + lambda) ----
+        #  Negative-tolerant regularization (shift + lambda)
         z_shift = logits - v
-        q_pos = torch.sigmoid(z_shift)                      # y=1 branch
-        q_neg = torch.sigmoid(self.lam * z_shift)           # y=0 branch
+        q_pos = torch.sigmoid(z_shift)
+        q_neg = torch.sigmoid(self.lam * z_shift)
 
         one_minus_q_pos = 1.0 - q_pos
         one_minus_q_neg = 1.0 - q_neg
@@ -152,9 +138,7 @@ class DBLoss(nn.Module):
         else:
             return loss_per_sample
 
-# =========================
 # Data & stats
-# =========================
 def transform_data(dataset: pd.DataFrame, max_length=512, sampler: Optional[WeightedRandomSampler] = None,
                    shuffle: Optional[bool] = None):
     """
@@ -232,9 +216,7 @@ def compute_instance_weights(df: pd.DataFrame) -> np.ndarray:
     weights = np.array(weights, dtype=np.float64)
     return weights / weights.mean()
 
-# =========================
 # Threshold tuning & eval
-# =========================
 def tune_thresholds_for_mcc(model: nn.Module, dev_loader: DataLoader, device,
                             num_classes: int = _NUM_CLASSES,
                             grid: Optional[Sequence[float]] = None,
@@ -331,9 +313,7 @@ def test_model(model: nn.Module, test_loader: DataLoader, test_ids, device,
             preds.extend(pred.tolist())
     return pd.DataFrame({"id": test_ids, "Predicted_Paraphrase_Types": preds})
 
-# =========================
 # Train loop
-# =========================
 def train_model(model, train_data, dev_data, device, loss_fn, epochs=5, lr=1e-5):
     optimizer = AdamW(model.parameters(), lr=lr)
     for epoch in range(epochs):
@@ -355,9 +335,7 @@ def train_model(model, train_data, dev_data, device, loss_fn, epochs=5, lr=1e-5)
         print(f"Epoch {epoch+1}: dev accuracy :: {acc:.3f}, dev loss :: {train_loss:.3f}, MCC :: {matt:.3f}")
     return model
 
-# =========================
 # Misc
-# =========================
 def seed_everything(seed=11711):
     random.seed(seed)
     np.random.seed(seed)
@@ -396,9 +374,7 @@ def get_args():
     p.add_argument("--use_weighted_sampler", action="store_true")
     return p.parse_args()
 
-# =========================
 # Main
-# =========================
 def finetune_paraphrase_detection(args):
     seed_everything(args.seed)
     device = torch.device("cuda") if args.use_gpu else torch.device("cpu")

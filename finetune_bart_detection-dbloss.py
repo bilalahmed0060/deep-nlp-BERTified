@@ -1,5 +1,6 @@
 import argparse
 import ast
+import os
 import random
 from typing import Optional, Sequence
 
@@ -11,7 +12,17 @@ from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from tqdm import tqdm
 from transformers import AutoTokenizer, BartModel
 from sklearn.metrics import matthews_corrcoef
-from optimizer import AdamW
+
+# Optimizer: prefer local optimizer.AdamW; fallback to torch.optim.AdamW
+try:
+    from optimizer import AdamW
+except Exception:
+    from torch.optim import AdamW
+
+# ---- plotting (headless-safe) ----
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 TQDM_DISABLE = False
 
@@ -20,7 +31,9 @@ _VALID_TYPES = [i for i in range(1, 32) if i not in {12, 19, 20, 23, 27}]
 _TYPE_TO_IDX = {t: i for i, t in enumerate(_VALID_TYPES)}
 _NUM_CLASSES = len(_VALID_TYPES)
 
+# -------------------------
 # Model: BART + masked-mean pooling (returns LOGITS)
+# -------------------------
 class BartWithClassifier(nn.Module):
     def __init__(self, num_labels=_NUM_CLASSES, dropout=0.1):
         super().__init__()
@@ -31,7 +44,6 @@ class BartWithClassifier(nn.Module):
     def forward(self, input_ids, attention_mask=None):
         outputs = self.bart(input_ids=input_ids, attention_mask=attention_mask)
         last_hidden = outputs.last_hidden_state  # [B, T, H]
-
         if attention_mask is None:
             pooled = last_hidden.mean(dim=1)
         else:
@@ -39,11 +51,12 @@ class BartWithClassifier(nn.Module):
             summed = (last_hidden * mask).sum(dim=1)         # [B, H]
             lengths = torch.clamp(mask.sum(dim=1), min=1.0)  # [B, 1]
             pooled = summed / lengths
-
         logits = self.classifier(self.dropout(pooled))       # [B, C]
         return logits
 
+# -------------------------
 # Distribution-Balanced Loss (DBLoss)
+# -------------------------
 class DBLoss(nn.Module):
     """
     Distribution-Balanced Loss for multi-label:
@@ -74,8 +87,7 @@ class DBLoss(nn.Module):
         self.reduction = reduction
         self.eps = eps
 
-        counts = class_counts.clone().float()
-        counts = torch.clamp(counts, min=1.0)               # avoid zero
+        counts = class_counts.clone().float().clamp_min(1.0) # avoid zero
         self.register_buffer("class_counts", counts)
         self.register_buffer("inv_counts", 1.0 / counts)
 
@@ -85,8 +97,7 @@ class DBLoss(nn.Module):
 
     def set_num_instances(self, N_instances: int):
         self.N_instances = max(int(N_instances), 1)
-        p = self.class_counts / float(self.N_instances)
-        p = torch.clamp(p, min=1e-6, max=1 - 1e-6)
+        p = (self.class_counts / float(self.N_instances)).clamp_(1e-6, 1 - 1e-6)
         b_hat = torch.log(p / (1.0 - p))
         self.v = -self.kappa * b_hat
         self.bias_ready = True
@@ -97,21 +108,20 @@ class DBLoss(nn.Module):
 
         B, C = logits.shape
         device = logits.device
-
-        inv_counts = self.inv_counts.to(device) 
-        v = self.v.to(device).view(1, C)
+        inv_counts = self.inv_counts.to(device)             # [C]
+        v = self.v.to(device).view(1, C)                    # [1, C]
         y = targets
 
         # Re-balanced weighting r_hat (per sample/label)
-        pos_mask = (y > 0).float() 
-        denom = torch.matmul(pos_mask, inv_counts)
+        pos_mask = (y > 0).float()                          # [B, C]
+        denom = torch.matmul(pos_mask, inv_counts)          # [B]
         default_denom = inv_counts.sum()
         denom = torch.where(denom > 0, denom, torch.full_like(denom, default_denom))
         denom = denom.view(B, 1)
-        r = inv_counts.view(1, C) / denom 
+        r = inv_counts.view(1, C) / denom                   # [B, C]
         r_hat = self.alpha + torch.sigmoid(self.beta * (r - self.mu))
 
-        #  Negative-tolerant regularization (shift + lambda)
+        # Negative-tolerant regularization (shift + lambda)
         z_shift = logits - v
         q_pos = torch.sigmoid(z_shift)
         q_neg = torch.sigmoid(self.lam * z_shift)
@@ -138,12 +148,11 @@ class DBLoss(nn.Module):
         else:
             return loss_per_sample
 
+# -------------------------
 # Data & stats
+# -------------------------
 def transform_data(dataset: pd.DataFrame, max_length=512, sampler: Optional[WeightedRandomSampler] = None,
                    shuffle: Optional[bool] = None):
-    """
-    Returns a DataLoader (with labels if present).
-    """
     tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large")
 
     input_ids_list, attention_masks, labels = [], [], []
@@ -200,9 +209,6 @@ def compute_class_priors(train_df: pd.DataFrame) -> np.ndarray:
 
 
 def compute_instance_weights(df: pd.DataFrame) -> np.ndarray:
-    """
-    per-instance weight = sum of inverse class priors for its labels
-    """
     priors = compute_class_priors(df)  # [C]
     inv = 1.0 / priors
     weights = []
@@ -216,16 +222,14 @@ def compute_instance_weights(df: pd.DataFrame) -> np.ndarray:
     weights = np.array(weights, dtype=np.float64)
     return weights / weights.mean()
 
+# -------------------------
 # Threshold tuning & eval
+# -------------------------
 def tune_thresholds_for_mcc(model: nn.Module, dev_loader: DataLoader, device,
                             num_classes: int = _NUM_CLASSES,
                             grid: Optional[Sequence[float]] = None,
                             prior_logit: Optional[torch.Tensor] = None,
                             tau: float = 0.0):
-    """
-    Returns thresholds maximizing per-class MCC on dev.
-    If prior_logit and tau>0, adjusts logits by -tau*prior_logit before sigmoid.
-    """
     if grid is None:
         grid = np.linspace(0.02, 0.98, 49)
 
@@ -242,8 +246,8 @@ def tune_thresholds_for_mcc(model: nn.Module, dev_loader: DataLoader, device,
             probs_list.append(probs)
             y_list.append(labels.numpy())
 
-    P = np.vstack(probs_list)            # [N, C]
-    Y = np.vstack(y_list).astype(int)    # [N, C]
+    P = np.vstack(probs_list)
+    Y = np.vstack(y_list).astype(int)
 
     thresholds = np.full(num_classes, 0.5, dtype=float)
     for c in range(num_classes):
@@ -291,7 +295,6 @@ def evaluate_model(model: nn.Module, dev_loader: DataLoader, device,
         mccs.append(matthews_corrcoef(Y[:, i], Yhat[:, i]))
     return float(np.mean(accs)), float(np.mean(mccs))
 
-
 def test_model(model: nn.Module, test_loader: DataLoader, test_ids, device,
                thresholds: Optional[np.ndarray] = None,
                prior_logit: Optional[torch.Tensor] = None,
@@ -313,9 +316,40 @@ def test_model(model: nn.Module, test_loader: DataLoader, test_ids, device,
             preds.extend(pred.tolist())
     return pd.DataFrame({"id": test_ids, "Predicted_Paraphrase_Types": preds})
 
-# Train loop
+# -------------------------
+# Plotting & logging helpers
+# -------------------------
+def _ensure_dir(path: str):
+    os.makedirs(path, exist_ok=True)
+
+def _save_plot(x, y, xlabel, ylabel, title, outpath):
+    plt.figure()
+    plt.plot(x, y)  # single series, default style (no explicit colors)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(outpath)
+    plt.close()
+
+def _save_metrics_csv(history: dict, out_csv: str):
+    df = pd.DataFrame(history)
+    df.to_csv(out_csv, index=False)
+
+# -------------------------
+# Train loop (returns history for plots)
+# -------------------------
 def train_model(model, train_data, dev_data, device, loss_fn, epochs=5, lr=1e-5):
     optimizer = AdamW(model.parameters(), lr=lr)
+
+    history = {
+        "epoch": [],
+        "train_loss": [],
+        "dev_acc_0p5": [],
+        "dev_mcc_0p5": [],
+    }
+
     for epoch in range(epochs):
         train_loss = 0.0
         num_batches = 0
@@ -331,11 +365,19 @@ def train_model(model, train_data, dev_data, device, loss_fn, epochs=5, lr=1e-5)
             num_batches += 1
 
         train_loss /= max(1, num_batches)
-        acc, matt = evaluate_model(model, dev_data, device)
+        acc, matt = evaluate_model(model, dev_data, device)  # raw view: fixed 0.5, no adj
         print(f"Epoch {epoch+1}: dev accuracy :: {acc:.3f}, dev loss :: {train_loss:.3f}, MCC :: {matt:.3f}")
-    return model
 
+        history["epoch"].append(epoch + 1)
+        history["train_loss"].append(train_loss)
+        history["dev_acc_0p5"].append(acc)
+        history["dev_mcc_0p5"].append(matt)
+
+    return model, history
+
+# -------------------------
 # Misc
+# -------------------------
 def seed_everything(seed=11711):
     random.seed(seed)
     np.random.seed(seed)
@@ -344,7 +386,6 @@ def seed_everything(seed=11711):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-
 
 def get_args():
     p = argparse.ArgumentParser()
@@ -357,7 +398,7 @@ def get_args():
     # DBLoss params
     p.add_argument("--alpha", type=float, default=0.1)
     p.add_argument("--beta", type=float, default=10.0)
-    p.add_argument("--mu", type=float, default=0.9)     # try 0.9 (few labels) or 0.05 (many labels)
+    p.add_argument("--mu", type=float, default=0.9)     # 0.9 if few labels/sample; 0.05 if many labels/sample
     p.add_argument("--lam", type=float, default=2.0)
     p.add_argument("--kappa", type=float, default=0.05)
     p.add_argument("--gamma", type=float, default=0.0)  # 0.0 => DB-0FL; try 2.0 for focalized DB
@@ -372,9 +413,15 @@ def get_args():
 
     # Weighted sampler
     p.add_argument("--use_weighted_sampler", action="store_true")
+
+    # Output dirs
+    p.add_argument("--plot_dir", type=str, default="plots_db")
+    p.add_argument("--metrics_dir", type=str, default="metrics_db")
     return p.parse_args()
 
+# -------------------------
 # Main
+# -------------------------
 def finetune_paraphrase_detection(args):
     seed_everything(args.seed)
     device = torch.device("cuda") if args.use_gpu else torch.device("cpu")
@@ -418,9 +465,9 @@ def finetune_paraphrase_detection(args):
     if args.logit_adjust_tau > 0:
         print(f"Using logit adjustment with tau={args.logit_adjust_tau}")
 
-    # Train
-    model = train_model(model, train_loader, dev_loader, device, loss_fn=dbloss,
-                        epochs=args.epochs, lr=args.lr)
+    # ---- Train (collect history) ----
+    model, history = train_model(model, train_loader, dev_loader, device, loss_fn=dbloss,
+                                 epochs=args.epochs, lr=args.lr)
 
     print("Training finished.")
 
@@ -443,22 +490,44 @@ def finetune_paraphrase_detection(args):
     )
     print(f"Dev (threshold-tuned) accuracy: {acc_t:.3f}  MCC: {mcc_t:.3f}")
 
-    # For reference: fixed 0.5
+    # For reference: fixed 0.5 with adj too
     acc_raw, mcc_raw = evaluate_model(
         model, dev_loader, device, thresholds=None,
         prior_logit=prior_logit, tau=args.logit_adjust_tau
     )
     print(f"Dev (fixed 0.5)   accuracy: {acc_raw:.3f}  MCC: {mcc_raw:.3f}")
 
-    # Test predictions using tuned thresholds (+ optional logit adjustment)
+    # ---- Save metrics + plots ----
+    _ensure_dir(args.metrics_dir)
+    _ensure_dir(args.plot_dir)
+
+    # Append final tuned metrics at the last epoch row for convenience
+    history["dev_acc_tuned_final"] = [None] * (len(history["epoch"]) - 1) + [acc_t]
+    history["dev_mcc_tuned_final"] = [None] * (len(history["epoch"]) - 1) + [mcc_t]
+    metrics_csv = os.path.join(args.metrics_dir, "dbloss_metrics.csv")
+    _save_metrics_csv(history, metrics_csv)
+    print(f"Saved metrics CSV to {metrics_csv}")
+
+    # Plots (per-epoch curves)
+    x = history["epoch"]
+    _save_plot(x, history["train_loss"], "Epoch", "Train Loss",
+               "DBLoss: Train Loss per Epoch", os.path.join(args.plot_dir, "train_loss.png"))
+    _save_plot(x, history["dev_acc_0p5"], "Epoch", "Dev Accuracy (0.5)",
+               "DBLoss: Dev Accuracy (fixed 0.5) per Epoch", os.path.join(args.plot_dir, "dev_acc_0p5.png"))
+    _save_plot(x, history["dev_mcc_0p5"], "Epoch", "Dev MCC (0.5)",
+               "DBLoss: Dev MCC (fixed 0.5) per Epoch", os.path.join(args.plot_dir, "dev_mcc_0p5.png"))
+    print(f"Saved plots to {args.plot_dir}")
+
+    # ---- Test predictions using tuned thresholds (+ optional logit adjustment) ----
     test_ids = test_df["id"]
     test_results = test_model(
         model, test_loader, test_ids, device,
         thresholds=opt_thresholds, prior_logit=prior_logit, tau=args.logit_adjust_tau
     )
-    test_results.to_csv("predictions/bart/etpc-paraphrase-detection-test-output.csv", index=False)
-    print("Wrote predictions to predictions/bart/etpc-paraphrase-detection-test-output.csv")
-
+    os.makedirs("predictions/bart", exist_ok=True)
+    out_csv = "predictions/bart/etpc-paraphrase-detection-test-output.csv"
+    test_results.to_csv(out_csv, index=False)
+    print(f"Wrote predictions to {out_csv}")
 
 if __name__ == "__main__":
     args = get_args()

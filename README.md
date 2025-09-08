@@ -179,13 +179,13 @@ Implementation details:
 - Why: Explicitly counters the frequency bias and reduces negative over-confidence.
 
 #### 4) Calibration & Decision Rules
-##### ** 4.1 Prior-aware Logit Adjustment**
+##### **4.1 Prior-aware Logit Adjustment**
 We adjust logits at inference (and optionally validation) by subtracting τ * logit(prior) where prior = P(y=1) from training data.
 
 - Effect: Down-weights frequent classes and up-weights rare ones without touching learned weights.
 - Setting: We used τ=0.5 in our best configurations.
 
-##### ** 4.2 Prior-aware Logit Adjustment**
+##### **4.2 Per-class Threshold Tuning (MCC-oriented)**
 Instead of using a global 0.5, we grid-search thresholds per class on the dev set to maximize per-class MCC, then apply these thresholds to test.
 - Grid: t ∈ [0.02, 0.98], 49–61 steps.
 - Why: Each label has a different prior and score distribution; per-class tuning aligns the decision rule with MCC.

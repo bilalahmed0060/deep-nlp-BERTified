@@ -296,47 +296,6 @@ What didn’t help (or helped less)
 - Using a global threshold (0.5) after fancy losses still under-performed per-class tuned thresholds.
 - Naive data augmentation was not attempted due to label-drift risk for fine-grained types; future work could explore type-preserving augmentation with verification.
 
-#### **Baseline**
-
-Model. facebook/bart-large encoder + linear head; pooled by taking token 0; trained with BCE on probabilities.
-Thresholding. Fixed 0.5 per class.
-Result (dev, 5 epochs):
-
-Accuracy: **0.907**
-
-MCC (mean per class): 0.073
-
-#### **What problem are we facing**
-
-The core issues in our setting:
-
-1) Negative dominance: Each example has a few positives and many negatives per class → BCE over-weights easy negatives.
-
-2) Long-tailed labels: Head types dominate learning; tail types are ignored.
-
-3) Label co-occurrence: Simple re-sampling can oversample head labels that co-occur with rare ones, weakening the intended effect.
-
-Hence we decided to change the loss function mainly to cater for these problems above.
-
-What loss functions we decided to go with:
-- Asymmetric Loss (ASL) addresses the positive/negative imbalance by down-weighting easy negatives while retaining strong gradients for positives; this consistently improves multi-label classification in the long-tail regime. 
-
-- Distribution-Balanced Loss (DB) explicitly re-balances per-label contributions per instance (accounting for co-occurrence) and applies Negative-Tolerant Regularization to mitigate over-suppression of negatives. EMNLP-21 shows DB is particularly effective for multi-label text with long-tailed distributions. 
-
-- Classical class-reweighting (e.g., class-balanced loss using effective number of samples) is helpful, but newer losses above generally perform better in modern multi-label settings.
-
-Therefore we chose ASL as our primary loss (strong empirical gains on tail labels) and DB Loss as a principled alternative targeting co-occurrence + negative dominance, validated for multi-label NLP.
-
-#### **What we changed (beyond the loss)**
-
-To make the losses effective and to optimize MCC, we also improved representation, calibration, and sampling:
-
-- Masked mean pooling for BART (instead of using token 0): stable sentence pair representation for BART encoders.
-- Train on logits; apply sigmoid only at eval/test (better numerical stability).
-- Prior-aware logit adjustment (inference-time): subtract τ·logit(prior) per class so rare labels need less evidence (helps recall on tails). We sweep τ∈{0.25,0.5,0.75,1.0}.
-- Per-class threshold tuning on dev to directly maximize per-class MCC (grid search per label).
-- WeightedRandomSampler at instance level: instance weight = sum of inverse class priors of its positive labels, to surface tail-heavy examples without naive per-label oversampling.
-
 ### **Results**
 
 All runs are 5 epochs on the same train/dev split.

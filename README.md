@@ -287,7 +287,7 @@ Discussion. The sampler increases exposure to rare positives without fabricating
 
 #### Key findings & trends
 - Loss matters, but thresholds matter too. ASL/DBLoss both beat BCE; per-class threshold tuning and τ-adjustment deliver large additional MCC gains.
-- ASL > DBLoss (here). With γ⁻ and clipping, ASL achieved the highest tuned MCC in our experiments (e.g., 0.382–0.434 vs. DBLoss 0.296–0.323), though both are strong vs. baseline.
+- ASL > DBLoss (here). With γ⁻ and clipping, ASL achieved the highest tuned MCC in our experiments (e.g., 0.382–0.532 vs. DBLoss 0.296–0.323), though both are strong vs. baseline.
 - Samplers help when positives per batch are scarce; effect is additive with loss and calibration.
 - Accuracy is misleading. Fixed-0.5 accuracy stays high while MCC changes significantly—reinforcing MCC as the right objective in long-tail multi-label detection.
 
@@ -307,6 +307,7 @@ Summary table:
 | **Baseline (BCE)**| —                                                                            | token-0 pooling, fixed 0.5 thresholds         |    0.907      |    0.073      |       —         |       —         |
 | **DB Loss**       | α=0.1, β=10, **μ=0.9**, λ=2.0, κ=0.05, γ=0.0 (DB-0FL)                        | **WeightedRandomSampler**, logit-adj **τ=0.5**|    0.770      |    0.157      |     **0.780**   |     **0.323**   |
 | **ASL**           | γ_pos=0.0, **γ_neg=2.0**, **clip=0.1**                                       | **WeightedRandomSampler**, logit-adj **τ=0.5**|    0.346      |    0.107      |     **0.818**   |     **0.371**   |
+| **ASL (HPO best)**| γ_pos=0.0, γ_neg=1.0, clip=0.1633; lr=7.0e-6; wd=5.94e-4; dropout=0.161; batch=16 | WeightedRandomSampler, per-class thresholds (61 steps), logit-adj τ=0.2773|    -     |    -      |     **0.873**   |     **0.532**   |
 
 
 **Notes**:
@@ -322,7 +323,21 @@ Summary table:
 - DB is competitive and theoretically appealing when label co-occurrence is severe; EMNLP-21 shows DB’s advantages for multi-label text, which we partially observe (MCC 0.323 vs baseline 0.073).
 
 ### Hyperparameter Optimization 
+Best params found (ASL, from Optuna)
+- lr=7.04e-06, weight_decay=5.94e-04, dropout=0.161
+- gamma_pos=0.0 (implicit), gamma_neg=1.0
+- clip=0.1633
+- tau=0.2773
+- batch_size=16, th_grid_steps=61
+- use_weighted_sampler=True
 
+Why these may have worked:
+- Moderate τ (0.28): just enough prior correction without over-flattening head classes.
+- High clip (~0.16): aggressively downweights easy negatives, which can boost recall on rare labels.
+- Lower γ⁻ (=1) with a higher clip is a reasonable trade-off: clipping is already suppressing the sea of easy negatives; you need less focal pressure.
+- Higher weight decay + dropout 0.16 likely improved generalization for tail labels.
+
+After hyper-paramter optimization achieved a tuned Dev accuracy of `0.873` and tuned MCC of `0.532`
 
 ### Vislualisation
 **ASL**:

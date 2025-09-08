@@ -409,7 +409,7 @@ Side-by-side insights:
 - DB for multi-label text: Huang et al., Balancing Methods for Multi-Label Text Classification with Long-Tailed Class Distribution, EMNLP 2021. [ACL Anthology](https://aclanthology.org/2021.emnlp-main.643/)
 - Class-Balanced Loss (background): Cui et al., CVPR 2019. [CVF Open Access](https://openaccess.thecvf.com/content_CVPR_2019/papers/Cui_Class-Balanced_Loss_Based_on_Effective_Number_of_Samples_CVPR_2019_paper.pdf)
 
-## 5) Paraphrase generation using BART:
+## 5) Bart paraphrase type generation:
 ### 1) Install extra packages
 ```bash
 pip install optuna

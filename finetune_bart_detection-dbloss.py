@@ -12,14 +12,9 @@ from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from tqdm import tqdm
 from transformers import AutoTokenizer, BartModel
 from sklearn.metrics import matthews_corrcoef
+from optimizer import AdamW
 
-# Optimizer: prefer local optimizer.AdamW; fallback to torch.optim.AdamW
-try:
-    from optimizer import AdamW
-except Exception:
-    from torch.optim import AdamW
 
-# ---- plotting (headless-safe) ----
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

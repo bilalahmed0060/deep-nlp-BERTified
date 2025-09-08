@@ -1,5 +1,6 @@
 import argparse
 import ast
+import os
 import random
 from typing import Optional, Sequence
 
@@ -11,12 +12,19 @@ from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from tqdm import tqdm
 from transformers import AutoTokenizer, BartModel
 from sklearn.metrics import matthews_corrcoef
-from optimizer import AdamW 
+from optimizer import AdamW
+
+# --- plotting
+import matplotlib
+matplotlib.use("Agg")  # safe for headless
+import matplotlib.pyplot as plt
 
 TQDM_DISABLE = False
 
 
+# =========================
 # Model: BART + masked-mean pooling (returns LOGITS)
+# =========================
 class BartWithClassifier(nn.Module):
     def __init__(self, num_labels=26, dropout=0.1):
         super().__init__()
@@ -40,7 +48,9 @@ class BartWithClassifier(nn.Module):
         return logits
 
 
+# =========================
 # Asymmetric Loss (ASL)
+# =========================
 class AsymmetricLossMultiLabel(nn.Module):
     """
     Ridnik et al., 2021 — decoupled focusing for pos/neg + easy-negative clipping.
@@ -95,7 +105,9 @@ class AsymmetricLossMultiLabel(nn.Module):
             return loss
 
 
+# =========================
 # Data & stats
+# =========================
 _VALID_TYPES = [i for i in range(1, 32) if i not in {12, 19, 20, 23, 27}]
 _TYPE_TO_IDX = {t: i for i, t in enumerate(_VALID_TYPES)}
 _NUM_CLASSES = len(_VALID_TYPES)  # 26
@@ -174,7 +186,9 @@ def compute_instance_weights(df: pd.DataFrame) -> np.ndarray:
     return weights / weights.mean()
 
 
+# =========================
 # Threshold tuning & eval
+# =========================
 def tune_thresholds_for_mcc(model: nn.Module, dev_loader: DataLoader, device,
                             num_classes: int = _NUM_CLASSES,
                             grid: Optional[Sequence[float]] = None,
@@ -200,7 +214,7 @@ def tune_thresholds_for_mcc(model: nn.Module, dev_loader: DataLoader, device,
             probs_list.append(probs)
             y_list.append(labels.numpy())
 
-    P = np.vstack(probs_list)         
+    P = np.vstack(probs_list)
     Y = np.vstack(y_list).astype(int)
 
     thresholds = np.full(num_classes, 0.5, dtype=float)
@@ -272,9 +286,41 @@ def test_model(model: nn.Module, test_loader: DataLoader, test_ids, device,
     return pd.DataFrame({"id": test_ids, "Predicted_Paraphrase_Types": preds})
 
 
-# Train loop
+# =========================
+# Plotting & logging helpers
+# =========================
+def _ensure_dir(path: str):
+    os.makedirs(path, exist_ok=True)
+
+def _save_plot(x, y, xlabel, ylabel, title, outpath):
+    plt.figure()                 # one plot per figure
+    plt.plot(x, y)               # do not set colors/styles (per guidelines)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(outpath)
+    plt.close()
+
+def _save_metrics_csv(history: dict, out_csv: str):
+    df = pd.DataFrame(history)
+    df.to_csv(out_csv, index=False)
+
+
+# =========================
+# Train loop (now returns history for plots)
+# =========================
 def train_model(model, train_data, dev_data, device, loss_fn, epochs=5, lr=1e-5):
     optimizer = AdamW(model.parameters(), lr=lr)
+
+    history = {
+        "epoch": [],
+        "train_loss": [],
+        "dev_acc_0p5": [],
+        "dev_mcc_0p5": [],
+    }
+
     for epoch in range(epochs):
         train_loss = 0.0
         num_batches = 0
@@ -290,12 +336,20 @@ def train_model(model, train_data, dev_data, device, loss_fn, epochs=5, lr=1e-5)
             num_batches += 1
 
         train_loss /= max(1, num_batches)
-        acc, matt = evaluate_model(model, dev_data, device)
+        acc, matt = evaluate_model(model, dev_data, device)  # raw view: fixed 0.5, no adj
         print(f"Epoch {epoch+1}: dev accuracy :: {acc:.3f}, dev loss :: {train_loss:.3f}, MCC :: {matt:.3f}")
-    return model
+
+        history["epoch"].append(epoch + 1)
+        history["train_loss"].append(train_loss)
+        history["dev_acc_0p5"].append(acc)
+        history["dev_mcc_0p5"].append(matt)
+
+    return model, history
 
 
+# =========================
 # Misc
+# =========================
 def seed_everything(seed=11711):
     random.seed(seed)
     np.random.seed(seed)
@@ -316,8 +370,8 @@ def get_args():
 
     # ASL params
     p.add_argument("--gamma_pos", type=float, default=0.0)
-    p.add_argument("--gamma_neg", type=float, default=2.0)  # try 2.0 (was 4.0)
-    p.add_argument("--clip", type=float, default=0.1)       # try 0.1 (was 0.05)
+    p.add_argument("--gamma_neg", type=float, default=2.0)
+    p.add_argument("--clip", type=float, default=0.1)
 
     # Prior-aware logit adjustment
     p.add_argument("--logit_adjust_tau", type=float, default=0.0, help="0 disables; try 0.25–1.0")
@@ -329,10 +383,16 @@ def get_args():
 
     # Weighted sampler
     p.add_argument("--use_weighted_sampler", action="store_true")
+
+    # Output dirs
+    p.add_argument("--plot_dir", type=str, default="plots")
+    p.add_argument("--metrics_dir", type=str, default="metrics")
     return p.parse_args()
 
 
+# =========================
 # Main
+# =========================
 def finetune_paraphrase_detection(args):
     seed_everything(args.seed)
     device = torch.device("cuda") if args.use_gpu else torch.device("cpu")
@@ -376,9 +436,9 @@ def finetune_paraphrase_detection(args):
         reduction="mean",
     )
 
-    # Train
-    model = train_model(model, train_loader, dev_loader, device, loss_fn=asloss,
-                        epochs=args.epochs, lr=args.lr)
+    # Train (collect history)
+    model, history = train_model(model, train_loader, dev_loader, device, loss_fn=asloss,
+                                 epochs=args.epochs, lr=args.lr)
 
     print("Training finished.")
 
@@ -401,21 +461,45 @@ def finetune_paraphrase_detection(args):
     )
     print(f"Dev (threshold-tuned) accuracy: {acc_t:.3f}  MCC: {mcc_t:.3f}")
 
-    # Final eval (0.5) just for reference
+    # Final eval (0.5) just for reference (with optional logit adj too)
     acc_raw, mcc_raw = evaluate_model(
         model, dev_loader, device, thresholds=None,
         prior_logit=prior_logit, tau=args.logit_adjust_tau
     )
     print(f"Dev (fixed 0.5)   accuracy: {acc_raw:.3f}  MCC: {mcc_raw:.3f}")
 
-    # Test predictions using tuned thresholds (+ optional logit adjustment)
+    # --- Save metrics + plots ---
+    _ensure_dir(args.metrics_dir)
+    _ensure_dir(args.plot_dir)
+
+    # Extend history with final calibrated scores
+    history["dev_acc_tuned_final"] = [None] * (len(history["epoch"]) - 1) + [acc_t]
+    history["dev_mcc_tuned_final"] = [None] * (len(history["epoch"]) - 1) + [mcc_t]
+    metrics_csv = os.path.join(args.metrics_dir, "asl_metrics.csv")
+    _save_metrics_csv(history, metrics_csv)
+    print(f"Saved metrics CSV to {metrics_csv}")
+
+    # Plots (per-epoch curves)
+    x = history["epoch"]
+    _save_plot(x, history["train_loss"], "Epoch", "Train Loss",
+               "Train Loss per Epoch", os.path.join(args.plot_dir, "train_loss.png"))
+    _save_plot(x, history["dev_acc_0p5"], "Epoch", "Dev Accuracy (0.5)",
+               "Dev Accuracy (fixed 0.5) per Epoch", os.path.join(args.plot_dir, "dev_acc_0p5.png"))
+    _save_plot(x, history["dev_mcc_0p5"], "Epoch", "Dev MCC (0.5)",
+               "Dev MCC (fixed 0.5) per Epoch", os.path.join(args.plot_dir, "dev_mcc_0p5.png"))
+
+    print(f"Saved plots to {args.plot_dir}")
+
+    # --- Test predictions using tuned thresholds (+ optional logit adjustment)
     test_ids = test_df["id"]
     test_results = test_model(
         model, test_loader, test_ids, device,
         thresholds=opt_thresholds, prior_logit=prior_logit, tau=args.logit_adjust_tau
     )
-    test_results.to_csv("predictions/bart/etpc-paraphrase-detection-test-output.csv", index=False)
-    print("Wrote predictions to predictions/bart/etpc-paraphrase-detection-test-output.csv")
+    _ensure_dir("predictions/bart")
+    out_csv = "predictions/bart/etpc-paraphrase-detection-test-output.csv"
+    test_results.to_csv(out_csv, index=False)
+    print(f"Wrote predictions to {out_csv}")
 
 
 if __name__ == "__main__":

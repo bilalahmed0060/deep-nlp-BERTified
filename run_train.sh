@@ -35,3 +35,5 @@ echo -e "Uncommitted Changes: $(git status --porcelain | wc -l)\n"
 # python -u multitask_classifier.py --use_gpu --local_files_only --option finetune --task etpc --hidden_dropout_prob 0.1 --batch_size 32
 python finetune_bart_detection_asl.py --gamma_neg 2.0 --clip 0.1 --logit_adjust_tau 0.5 --use_weighted_sampler --use_gpu
 # python finetune_bart_detection-dbloss.py --alpha 0.1 --beta 10 --mu 0.9 --lam 2.0 --kappa 0.05 --gamma 0.0 --logit_adjust_tau 0.5 --use_weighted_sampler --use_gpu
+# python asl_hparam_tuner.py --use_gpu --n_trials 40 --epochs_per_trial 3
+# python dbloss_hparam_tuner.py --use_gpu --n_trials 1 --epochs_per_trial 1

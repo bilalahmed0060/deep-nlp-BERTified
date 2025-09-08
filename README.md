@@ -488,6 +488,7 @@ python bart_generation.py \
 
 --use_gpu                  Use CUDA if available
 --seed                     Global random seed (default: 11711)
+````
 
 
 ## Members Contribution 

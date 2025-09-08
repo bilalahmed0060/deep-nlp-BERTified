@@ -140,7 +140,7 @@ python asl_hparam_tuner.py \
 --prune_disable           Disable Optuna pruner (enable for debugging)
 ```
 
-### Methadology
+### Methodology
 #### 1) Task & Data
 - Problem: Given a sentence pair (s₁, s₂), predict 26 paraphrase types (multi-label; a sample can have multiple types).
 - Labels: We map original type IDs 1–31 to a 26-class space by dropping {12, 19, 20, 23, 27} as specified.

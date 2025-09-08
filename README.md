@@ -713,7 +713,7 @@ Discussion & Takeaways
 Artificial Intelligence (AI) aided the development of this project. Please add a link to AI-Usage card [here](https://ai-cards.org/).
 
 #### Paraphrase Type Detection (ETPC)
-[![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/ai-usage-card-eptc.pdf/)
+[![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Card_ETPC.pdf/)
 
 ### Acknowledgement
 

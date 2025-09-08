@@ -621,7 +621,80 @@ A practical, stable paraphrase system that:
 - **Rewards**: `penalized_bleu_per_sample`, `quality_guided_reward`  
 - **PG log-probs**: `sequence_logprob`  
 - **Training loops**: `train_model` (MLE), `rl_finetune_epoch` (SCST)  
-- **Orchestration & HPO**: `finetune_paraphrase_generation` (flags: `--use_rl`, `--quality_weights`, `--hpo`, `--hpo_*`, `--rl_*`)  
+- **Orchestration & HPO**: `finetune_paraphrase_generation` (flags: `--use_rl`, `--quality_weights`, `--hpo`, `--hpo_*`, `--rl_*`)
+
+
+## Bonus Task: BERT paraphrase type detection (**Not completed**):
+### Methodology
+We tackle Paraphrase Type Detection on the ETPC dataset using the provided minBERT codebase. ETPC is a multi-label (26 types) sentence-pair task and is notably imbalanced.
+
+#### Baseline:
+- The ETPC dataloader (SentencePairDataset) yields pairs of sentences plus a 26-dim multi-hot label vector (one bit per paraphrase type).
+- In training loop, ETPC batches go through model.predict_paraphrase_types(...) and are trained with BCEWithLogitsLoss (per-label binary cross-entropy).
+- Evaluation for ETPC uses a very strict subset accuracy: a prediction is counted correct only if all 26 labels match after thresholding each logit at 0.5.
+
+Result (reference): Dev ≈ 0.068.
+
+Comment: This was the baseline we aimed to improve in our 2nd submission.
+
+#### What we tried:
+**1) Cross-encoder for sentence pairs**
+Instead of encoding each sentence independently and concatenating two CLS vectors (bi-encoder), we jointly encode the pair as
+`[CLS] s1 [SEP] s2 [SEP]`
+so self-attention can compare tokens across sentences.
+
+**2) Token-type (segment) IDs for pair modeling**
+The custom bert.py initially set token types to zeros. We added optional token_type_ids to BertModel.forward and passed 0 for [CLS] s1 [SEP] and 1 for s2 [SEP]. This is critical so BERT can distinguish the two segments.
+
+**3) Masked mean pooling instead of pooler for ETPC **
+ We aggregate token representations with mask-aware mean pooling (excluding pads), which often outperforms the pooler output on multi-label pair tasks.
+
+** Imbalance-aware optimization **
+- pos_weight BCEWithLogitsLoss: computed classwise (#neg/#pos) from the ETPC train labels and used it in BCE to up-weight rare types.
+
+However none of these improvement seemed to improve the baseline accuracy
+
+### Experiments
+### B0 — Provided/Reference baseline (minBERT finetune, bi-encoder, linear head)
+What: Each sentence encoded independently, CLS vectors concatenated → linear(26).
+Expectation: Reasonable multi-label performance; course docs report Dev acc ≈ 0.253 (±0.004) when finetuned.
+Result (reference): Dev ≈ 0.068.
+Comment: This is the target baseline we aimed to match/exceed.
+
+### Improvements
+#### E1 — Cross-encoder + token-type IDs + masked mean pooling + MLP head
+- What: Joint input; pass token_type_ids (0/1); mean-pool tokens; small MLP head.
+- Expectation: Big jump vs. bi-encoder; cross-sentence attention should help detect fine-grained edits.
+- Change vs. B1: Architectural change of the ETPC head and forward path only.
+- result (ours): Dev ≈ 0.059 (no consistent gain); Train ≈ 0.068.
+- Discussion: No improvement materialized under our setting. Investigation indicated that without proper token-type IDs, cross-encoder helped little; after adding token-types, gains were still muted—likely because subset accuracy punishes even small classwise threshold mismatches under heavy imbalance.
+
+#### E2 — + pos_weight BCE (per-class #neg/#pos) & bias priors
+- What: Compute label base rates on ETPC train; use BCEWithLogitsLoss(pos_weight); initialize/freeze last-layer bias to prior log-odds.
+- Expectation: Better recall on rare classes; higher exact-set matches.
+- Change vs. E1: Optimization & initialization only.
+- Result (ours): Dev ≈ 0.059 (stable), Train ≈ 0.068.
+- Discussion: Helped training stability (loss decreased), but subset accuracy unchanged. Likely the model’s per-class probabilities improved without crossing the fixed 0.5 threshold for the right labels simultaneously.
+
+### Results:
+| Model / Setting                                  | Encoder | Head / Pooling           | Loss                 | Dev Acc (ETPC)                      |
+| ------------------------------------------------ | ------- | ------------------------ | -------------------- | ----------------------------------- |
+| **Reference baseline** (reported)                | minBERT | Bi-encoder + Linear      | BCE (finetune)       | **0.253 ± 0.004**                   |
+| **Our empirical baseline**                       | minBERT | Bi-encoder + Linear      | BCE                  | **0.059**                           |
+| E1: Cross-encoder + token-type + mean-pool + MLP | minBERT | Cross-enc + MLP          | BCE                  | **0.059**                           |
+| E2: E1 + pos\_weight BCE + bias priors           | minBERT | Cross-enc + MLP          | **BCE(pos\_weight)** | **0.059**                           |
+
+### Discusssion and Takeways
+Discussion & Takeaways
+- Subset accuracy is extremely unforgiving for ETPC. Even when loss decreases and classwise scores improve, exact match on 26 labels often stays flat under heavy imbalance.
+- The ETPC label distribution is highly skewed (e.g., one class at ~0.65, others ~0.001–0.01). This makes a fixed global threshold of 0.5 particularly unhelpful; per-class thresholds help in theory, but didn’t move the metric reliably for us.
+- Cross-encoder + token types is generally the right direction, but data scarcity + long-tail + harsh metric can mask gains unless probabilities become very confident and well-calibrated for the correct full set.
+- The reference dev accuracy (0.253) suggests that with either (a) different train/dev splits, (b) different preprocessing (e.g., segment localization features), (c) stronger heads, or (d) more careful hyperparameters/regularization, minBERT can do meaningfully better. In our constrained ETPC-only modifications, we didn’t recapture that number.
+
+### References
+- Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding. NAACL-HLT. https://arxiv.org/abs/1810.04805
+- Humeau, S., Shuster, K., Lachaux, M.-A., & Weston, J. (2020). Poly-encoders: Architectures and Pre-training Strategies for Fast and Accurate Multi-sentence Scoring. ICLR. https://arxiv.org/abs/1905.01969
+- King, G., & Zeng, L. (2001). Logistic Regression in Rare Events Data. Political Analysis. https://gking.harvard.edu/publications/logistic-regression-rare-events-data
 
 
 ## Members Contribution 
@@ -637,7 +710,10 @@ A practical, stable paraphrase system that:
 *Member 2:*
 
 # AI-Usage Card
-Artificial Intelligence (AI) aided the development of this project. Please add a link to your AI-Usage card [here](https://ai-cards.org/).
+Artificial Intelligence (AI) aided the development of this project. Please add a link to AI-Usage card [here](https://ai-cards.org/).
+
+#### Paraphrase Type Detection (ETPC)
+[![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/ai-usage-card-eptc.pdf/)
 
 ### Acknowledgement
 

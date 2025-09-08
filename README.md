@@ -339,7 +339,7 @@ Why these may have worked:
 
 After hyper-paramter optimization achieved a tuned Dev accuracy of `0.873` and tuned MCC of `0.532`
 
-### Vislualisation
+### Visualization
 **ASL**:
 
 Dev accuracy:

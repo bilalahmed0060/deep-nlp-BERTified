@@ -886,7 +886,7 @@ Artificial Intelligence (AI) aided the development of this project. Please add a
 [![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Card_ETPC.pdf/)
 
 #### Sentiment Analysis (SST)
-[![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Card_SST.pdf/)
+[![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Cards_SST.pdf/)
 
 
 ### Acknowledgement

@@ -422,6 +422,8 @@ SBERT and Stemming both show smooth, strong loss reductions, yet their dev accur
 - Gao, T., Yao, X., & Chen, D. (2021). [SimCSE: Simple Contrastive Learning of Sentence Embeddings](https://arxiv.org/pdf/2104.08821.pdf).
 - Reimers, N., & Gurevych, I. (2019). [Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks](https://arxiv.org/pdf/1908.10084.pdf).
 
+  
+
 # 2) Semantic Textual Similarity (STS)
 
 ## 1) File structure
@@ -2332,7 +2334,7 @@ Discussion & Takeaways
 
 *Bilal Ahmed:* Implemented Sentiment Analysis (SST) baseline and introduced 2 improvements to optimize performance.
 
-*Ali Amsal Surani:* Implemented Semantic Textual Similarity (STS) baseline and introduced multiple improvements to optimize the performance.
+*Ali Surani:* Implemented Semantic Textual Similarity (STS) baseline and introduced multiple improvements to optimize the performance.
 
 *Areesha Jiwani:* Implemented Quora Question Pairs (QQP) Baseline and introduced 5 improvements to the baseline to increase performance.
 

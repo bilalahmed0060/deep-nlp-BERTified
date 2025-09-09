@@ -646,10 +646,10 @@ so self-attention can compare tokens across sentences.
 **2) Token-type (segment) IDs for pair modeling**
 The custom bert.py initially set token types to zeros. We added optional token_type_ids to BertModel.forward and passed 0 for [CLS] s1 [SEP] and 1 for s2 [SEP]. This is critical so BERT can distinguish the two segments.
 
-**3) Masked mean pooling instead of pooler for ETPC **
+**3) Masked mean pooling instead of pooler for ETPC**
  We aggregate token representations with mask-aware mean pooling (excluding pads), which often outperforms the pooler output on multi-label pair tasks.
 
-** Imbalance-aware optimization **
+**Imbalance-aware optimization**
 - pos_weight BCEWithLogitsLoss: computed classwise (#neg/#pos) from the ETPC train labels and used it in BCE to up-weight rare types.
 
 However none of these improvement seemed to improve the baseline accuracy

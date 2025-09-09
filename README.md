@@ -414,14 +414,6 @@ Methods that add pairwise interaction features and/or a contrastive objective no
 MNRL drops loss fast and then flattens, which matches its high dev accuracy: the contrastive term quickly organizes the embedding space and the classifier settles. Optimized Pipeline also falls steadily but a touch slower than MNRL (more parameters in the head to fit); it ends slightly below MNRL. Hybrid (MNRL + Optimized head) starts with the highest loss and reduces more slowly.
 SBERT and Stemming both show smooth, strong loss reductions, yet their dev accuracy lags; which is a representation of optimization is not equal to generalization case: the training objective is easier to satisfy than the true paraphrase decision.
 
-## Members Contribution 
-Explain what member did what in the project:
-
-**Areesha Jiwani:** Implemented QQP Baseline and Improvements.
-
-
-# AI-Usage Card
-[![AI-Usage Card QQP](https://img.shields.io/badge/AI_Usage_Card-pdf-red.svg)](./documentation/AI-Usage-Card-QQP.pdf/)
 
 # References 
 - Jacob Devlin, Ming-Wei Chang, Kenton Lee, Kristina Toutanova (2019) — BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.
@@ -1605,7 +1597,7 @@ Discussion & Takeaways
 
 *Member 2:*
 
-*Member 2:*
+*Areesha Jiwani:* Implemented Quora Question Pairs (QQP) Baseline and introduced 5 improvements to the baseline to increase performance.
 
 # AI-Usage Card
 Artificial Intelligence (AI) aided the development of this project. Please add a link to AI-Usage card [here](https://ai-cards.org/).
@@ -1618,6 +1610,10 @@ Artificial Intelligence (AI) aided the development of this project. Please add a
 
 #### Sentiment Analysis (SST)
 [![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Cards_SST.pdf/)
+
+#### Quora Question Pairs (QQP)
+[![AI-Usage Card QQP](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Card_QQP.pdf/)
+
 
 
 ### Acknowledgement

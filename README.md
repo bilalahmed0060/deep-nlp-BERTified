@@ -377,6 +377,10 @@ How I picked the final MNRL config (in plain English)
 I have performed 5 improvements (approaches). In these visuals, I have done a comparative study on the metrics: Dev Accuracy and Training Loss.
 https://github.com/bilalahmed0060/deep-nlp-BERTified/blob/main/Visualizations/Dev%20Accuracy%201.png
 
+
+![Alt text](Visualizations/Dev Accuracy 1.png)
+
+
 <img width="574" height="452" alt="image" src="https://github.com/user-attachments/assets/a6377830-0789-441a-a8b3-d06268ebad0d" />
 
 <img width="561" height="450" alt="image" src="https://github.com/user-attachments/assets/02c56848-b076-424f-b166-602a41c8ed25" />

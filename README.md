@@ -204,6 +204,7 @@ Hyperparameter tuning was time-consuming but essential. Small changes in paramet
 
 #### References
 - R-Drop: Regularized Dropout for Neural Networks NeurIPS 2021.(https://arxiv.org/pdf/2106.14448)
+- ULMFiT: Universal Language Model Fine-tuning for Text Classification, Howard and Ruder, 2018. (https://aclanthology.org/P18-1031.pdf)
 
 ##  4) Bart paraphrase type detection
 ### 1) Install extra packages

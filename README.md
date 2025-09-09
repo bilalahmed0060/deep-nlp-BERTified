@@ -885,6 +885,10 @@ Artificial Intelligence (AI) aided the development of this project. Please add a
 #### Paraphrase Type Detection (ETPC)
 [![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Card_ETPC.pdf/)
 
+#### Sentiment Analysis (SST)
+[![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Card_SST.pdf/)
+
+
 ### Acknowledgement
 
 The project description, partial implementation, and scripts were adapted from the default final project for the Stanford [CS 224N class](https://web.stanford.edu/class/cs224n/) developed by Gabriel Poesia, John, Hewitt, Amelie Byun, John Cho, and their (large) team (Thank you!)

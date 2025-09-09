@@ -329,13 +329,13 @@ This task targets paraphrase identification on the Quora Question Pairs (QQP) be
 
 ### Hyperparameter Optimization 
 
-Hyperparameter tuning is the process of picking the best values for settings the model doesn’t learn by itself like learning rate, batch size, or hidden dropout probability to maximize validation performance. I performed hyperparameter search on my best model approach for QQP: Multiple Negative Ranking Loss (MNRL) since it was already the top performer and is very sensitive to settings. I focused on the three knobs that matter most for contrastive training:
+Hyperparameter tuning is the process of picking the best values for settings the model doesn’t learn by itself like learning rate, batch size, or hidden dropout probability to maximize validation performance. We performed hyperparameter search on the best model approach for QQP: Multiple Negative Ranking Loss (MNRL) since it was already the top performer and is very sensitive to settings. We focused on the three knobs that matter most for contrastive training:
 
 1. `Learning rate (LR)` — stability vs. speed.
 2. `Batch size` — more in-batch negatives for MNRL.
 3. `Dropout` — regularization.
 
-I kept the contrastive specifics fixed to isolate these effects: `mnr_weight = 0.20`, `temperature = 0.05`, `5 epochs`, save best dev checkpoint, and report Accuracy (primary) plus P/R/F1 for sanity.
+We kept the contrastive specifics fixed to isolate these effects: `mnr_weight = 0.20`, `temperature = 0.05`, `5 epochs`, save best dev checkpoint, and report Accuracy (primary) plus P/R/F1 for sanity.
 
 | Set | Learning Rate | Batch Size | Dropout | Best Dev Acc | Notes |
 |-----|---------------|------------|---------|--------------|-------|
@@ -349,23 +349,23 @@ I kept the contrastive specifics fixed to isolate these effects: `mnr_weight = 0
 | 8   | 5e-5          | 16         | 0.20    | 0.866        |Lower dropout didn’t help at high LR. |
 | 9   | 5e-5          | 16         | 0.10    | 0.868        |Even lower dropout still below best. |
 
-The best, most reliable configuration was `LR = 2.2e-5`, `batch = 16`, `dropout = 0.1` (Set 6), with `dev accuracy = 87.6 %` on which I later ran 10 epochs and saved it as my best model as it gave me dev accuracy of 87.7 % when I ran the same settings for 10 epochs.
+The best, most reliable configuration was `LR = 2.2e-5`, `batch = 16`, `dropout = 0.1` (Set 6), with `dev accuracy = 87.6 %` on which we later ran 10 epochs and saved it as my best model as it gave me dev accuracy of 87.7 % when Iwe ran the same settings for 10 epochs.
 
-#### What changed when I changed each hyperparameter
+#### What changed when we changed each hyperparameter
 1) Learning rate (LR)
  - Trend: Going from `1e-5 → 2.2e-5` improved or matched the best dev accuracy (0.876), and generalized better at 2.2e-5.
  - Too high hurts: 5e-5 consistently dropped accuracy to 0.866–0.868, suggesting the joint BCE+MNR objective became less stable at that speed.
  - Takeaway: A moderate LR (~2.2e-5) is optimal for MNRL here.
 2) Batch size
  - Why bigger might help: With MNRL, each extra sample in a batch becomes a negative example, so larger batches can make the contrastive signal stronger.
- - What I actually saw: Keeping LR=1e-5 and dropout=0.3, a batch of 16 scored 0.874, 32 scored 0.873, and 64 dropped to 0.871 so the smallest batch won here.
+ - What we actually saw: Keeping LR=1e-5 and dropout=0.3, a batch of 16 scored 0.874, 32 scored 0.873, and 64 dropped to 0.871 so the smallest batch won here.
  - Bottom line: 16–32 worked best with my optimizer/schedule; just making the batch huge didn’t automatically improve accuracy.
 3) Dropout
  - At `LR=2.2e-5`, batch=16: Reducing dropout from 0.30 → 0.10 gave a small gain (0.875 → 0.876).
  - At `LR=5e-5`, batch=16: Lowering dropout 0.30 → 0.20/0.10 did not help and even dipped (0.868 → 0.866/0.868).
  - Takeaway: Dropout interacts with LR—lower (0.10) worked best at a moderate LR (2.2e-5), while higher LR (5e-5) needed stronger regularization (≈0.30)
 
-How I picked the final MNRL config (in plain English)
+How we picked the final MNRL config (in plain English)
 - Fix the contrastive knobs: set mnr_weight `λ = 0.20` and temperature `τ = 0.05`, train 5 epochs, and keep the best dev checkpoint (`seed=11711`).
 - Find a good learning rate first: with batch 16, sweep LRs; 2.2e-5 gave consistently strong dev scores and the cleanest peak (0.876).
 - Check batch size next: at good LRs `(1e-5, 2.2e-5)`, batch 16–32 was best; 64 didn’t help despite more in-batch negatives.
@@ -374,7 +374,7 @@ How I picked the final MNRL config (in plain English)
 
 ## Visualizations 
 
-I have performed 5 improvements (approaches). In these visuals, I have done a comparative study on the metrics: Dev Accuracy and Training Loss.
+Five approaches were performed for the improvements of the baseline task. In these visuals, we have done a comparative study on the metrics: Dev Accuracy and Training Loss.
 
 <img width="574" height="452" alt="image" src="https://github.com/user-attachments/assets/a6377830-0789-441a-a8b3-d06268ebad0d" />
 
@@ -419,6 +419,8 @@ SBERT and Stemming both show smooth, strong loss reductions, yet their dev accur
 - Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/pdf/1810.04805.pdf).
 - Gao, T., Yao, X., & Chen, D. (2021). [SimCSE: Simple Contrastive Learning of Sentence Embeddings](https://arxiv.org/pdf/2104.08821.pdf).
 - Reimers, N., & Gurevych, I. (2019). [Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks](https://arxiv.org/pdf/1908.10084.pdf).
+
+
 
 
 ## 3) Sentiment Analysis (SST):

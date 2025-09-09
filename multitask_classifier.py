@@ -24,6 +24,13 @@ from datasets import (
 from evaluation import model_eval_multitask, test_model_multitask
 from optimizer import AdamW
 
+from transformers import get_linear_schedule_with_warmup
+import torch.nn.utils as nn_utils
+
+
+from sst_finetune_rdrop import MultitaskBERTRDrop, rdrop_loss
+from sst_finetune_gradual_unfreezing import MultitaskBERTGradualFreeze
+
 TQDM_DISABLE = True
 
 
@@ -93,11 +100,12 @@ class MultitaskBERT(nn.Module):
         Thus, your output should contain 5 logits for each sentence.
         Dataset: SST
         """
-        ### TODO: Completed
+        # ### Completed
         embed = self.forward(input_ids, attention_mask)
         embed = self.dropout(embed)
         logits = self.sentiment_classifier(embed)
         return logits
+
 
     def predict_paraphrase(self, input_ids_1, attention_mask_1, input_ids_2, attention_mask_2):
         """
@@ -187,11 +195,14 @@ def train_multitask(args):
     sts_dev_dataloader = None
     etpc_train_dataloader = None
     etpc_dev_dataloader = None
+    sst_train_data_size = 0
 
     # SST dataset
     if args.task == "sst" or args.task == "multitask":
         sst_train_data = SentenceClassificationDataset(sst_train_data, args)
         sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
+
+        sst_train_data_size = len(sst_train_data)
 
         sst_train_dataloader = DataLoader(
             sst_train_data,
@@ -255,6 +266,7 @@ def train_multitask(args):
         "data_dir": ".",
         "option": args.option,
         "local_files_only": args.local_files_only,
+        "N_SENTIMENT_CLASSES": N_SENTIMENT_CLASSES, 
     }
 
     config = SimpleNamespace(**config)
@@ -266,12 +278,46 @@ def train_multitask(args):
     print(pformat({k: v for k, v in vars(args).items() if "csv" not in str(v)}))
     print(separator)
 
-    model = MultitaskBERT(config)
+    # changes for improvements
+    model = MultitaskBERT(config) # base
+    if args.model_type == "rdrop":
+        model = MultitaskBERTRDrop(config)
+    elif args.model_type == "gradual_unfreeze":
+        model = MultitaskBERTGradualFreeze(config)
+    
+
     model = model.to(device)
 
     lr = args.lr
-    optimizer = AdamW(model.parameters(), lr=lr)
+
+    # Steps calculation (sst: linear schedule with warmup)
+    steps_per_epoch = sst_train_data_size // args.batch_size
+    total_steps = steps_per_epoch * args.epochs
+    warmup_steps = int(0.1 * total_steps)  
+    
+    params = {'lr':lr}
+
+    # add weight decay
+    if args.weight_decay:
+        print(">> using weight decay: ",args.weight_decay)
+        params['weight_decay'] = args.weight_decay
+    
+    optimizer = AdamW(model.parameters(), **params)
+
     best_dev_acc = float("-inf")
+
+    # helper to rebuild optimizer only on trainable params for gradual unfreezing
+    def build_optimizer():
+        return AdamW(filter(lambda p: p.requires_grad, model.parameters()), **params)
+    
+    # Gradual unfreezing
+    if args.model_type == "gradual_unfreeze":
+        optimizer = build_optimizer()
+
+    if args.linear_schedule:
+        print(">> using linear Schedule")
+        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
+
 
     # Run for the specified number of epochs
     for epoch in range(args.epochs):
@@ -296,10 +342,24 @@ def train_multitask(args):
                 b_labels = b_labels.to(device)
 
                 optimizer.zero_grad()
-                logits = model.predict_sentiment(b_ids, b_mask)
-                loss = F.cross_entropy(logits, b_labels.view(-1))
+
+                # changes for improvements
+                if args.model_type == "rdrop":
+                    logits1, logits2 = model(b_ids, b_mask)
+                    loss = rdrop_loss(logits1, logits2, b_labels, alpha=1.0)
+                else:
+                    logits = model.predict_sentiment(b_ids, b_mask)
+                    loss = F.cross_entropy(logits, b_labels.view(-1))
+
                 loss.backward()
+
+                # Gradient Clipping
+                if args.model_type == "gradual_unfreeze":
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
                 optimizer.step()
+                if args.linear_schedule:
+                    scheduler.step()
 
                 train_loss += loss.item()
                 num_batches += 1
@@ -440,6 +500,12 @@ def train_multitask(args):
             best_dev_acc = dev_acc
             os.makedirs(os.path.dirname(args.filepath), exist_ok=True)
             save_model(model, optimizer, args, config, args.filepath)
+                
+        # Gradual unfreezing
+        if args.model_type == "gradual_unfreeze":
+            if epoch >= 1:  #only classifier trained in epoch 0
+                model.unfreeze_next_layer()
+                optimizer = build_optimizer()
 
 
 def test_model(args):
@@ -448,7 +514,14 @@ def test_model(args):
         saved = torch.load(args.filepath)
         config = saved["model_config"]
 
-        model = MultitaskBERT(config)
+        # improvements changes for sst.
+        model = MultitaskBERT(config) # Base
+        if args.model_type == "rdrop":
+            model = MultitaskBERTRDrop(config)
+        elif args.model_type == "gradual_unfreeze":
+            model = MultitaskBERTGradualFreeze(config)
+
+
         model.load_state_dict(saved["model"])
         model = model.to(device)
         print(f"Loaded model to test from {args.filepath}")
@@ -605,6 +678,10 @@ def get_args():
         default=1e-3 if args.option == "pretrain" else 1e-5,
     )
     parser.add_argument("--local_files_only", action="store_true")
+    # For Sentiment Analysis Task
+    parser.add_argument("--model_type", type=str, choices=['base', 'rdrop','gradual_unfreeze',], default='base')
+    parser.add_argument("--weight_decay", type=float, default=0.00)
+    parser.add_argument("--linear_schedule", action="store_true")
 
     args = parser.parse_args()
     return args

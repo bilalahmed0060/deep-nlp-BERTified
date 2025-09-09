@@ -1,0 +1,11 @@
+{
+  "lr": 7.044497359353094e-06,
+  "weight_decay": 0.0005940234670474396,
+  "dropout": 0.16104081711218812,
+  "gamma_neg": 1.0,
+  "clip": 0.1632591182288514,
+  "tau": 0.2773015467790908,
+  "batch_size": 16,
+  "th_grid_steps": 61,
+  "use_weighted_sampler": true
+}

@@ -378,16 +378,11 @@ Five approaches were performed for the improvements of the baseline task. In the
 
 **For Dev Accuracy:**
 
-![WhatsApp Image 2025-09-09 at 05 12 26_04839ff3](https://github.com/user-attachments/assets/6cc9386b-25e0-41d9-8eff-3ec64fbdd64a)
-
-![WhatsApp Image 2025-09-09 at 06 27 33_475389c3](https://github.com/user-attachments/assets/85a5118d-d25d-4134-a9aa-fc94de76881c)
-
-![WhatsApp Image 2025-09-09 at 05 12 26_c3374a57](https://github.com/user-attachments/assets/a76c4412-8c47-4060-bb06-e0dd1d44c70c)
-
-![WhatsApp Image 2025-09-09 at 05 12 26_a0140459](https://github.com/user-attachments/assets/01f1ccc0-2c5e-4490-ac77-ff12f207c024)
-
-![WhatsApp Image 2025-09-09 at 05 12 26_95f8906b](https://github.com/user-attachments/assets/04c58839-6511-49f1-8ec2-f8a158f052d3)
-
+<img width="602" height="458" alt="image" src="https://github.com/user-attachments/assets/8e5b42f3-045f-46cd-912c-7a96a9425127" />
+<img width="597" height="453" alt="image" src="https://github.com/user-attachments/assets/7d1d38c5-8efc-4afd-bc76-1a4ce07653a3" />
+<img width="610" height="455" alt="image" src="https://github.com/user-attachments/assets/a92199e8-831e-4017-9d5b-fe6c6a2e4286" />
+<img width="586" height="459" alt="image" src="https://github.com/user-attachments/assets/a5c0a4a7-250c-4bf4-8fee-e895d27d769b" />
+<img width="606" height="460" alt="image" src="https://github.com/user-attachments/assets/aba4bd40-f118-4f63-82f0-3abf93af67be" />
 
 **1. Which converges fastest?:**
 The Optimized Pipeline and Hybrid (MNRL + Optimized Pipeline) jump the quickest (big gains by epoch 2–3), because the interaction head immediately gives useful pairwise features; SBERT and Stemming also rise early but hit lower ceilings; MNRL improves more gradually and peaks around epoch 6–10.
@@ -403,15 +398,12 @@ Methods that add pairwise interaction features and/or a contrastive objective no
 
 **For Training Loss:**
 
-![WhatsApp Image 2025-09-09 at 05 12 26_1ec04ad2](https://github.com/user-attachments/assets/24207ed7-06d6-49a4-9b63-c67002b9a1a3)
+<img width="592" height="461" alt="image" src="https://github.com/user-attachments/assets/5b47d004-d36f-4187-8169-05d894c65d16" />
+<img width="582" height="467" alt="image" src="https://github.com/user-attachments/assets/aa7c378d-aa8b-407e-a79a-97805ee9c99d" />
+<img width="588" height="458" alt="image" src="https://github.com/user-attachments/assets/130292ae-9cd8-4a8b-b230-3a9fd518bebc" />
+<img width="578" height="456" alt="image" src="https://github.com/user-attachments/assets/b7da7714-7e9f-4b62-acb8-41ebda22de62" />
+<img width="585" height="456" alt="image" src="https://github.com/user-attachments/assets/6180b952-ad81-4c5b-a204-8cee1a5baeaa" />
 
-![WhatsApp Image 2025-09-09 at 05 12 26_428cb9a4](https://github.com/user-attachments/assets/9371c370-f2b4-45a2-8e9f-08d5ea5c0ba2)
-
-![WhatsApp Image 2025-09-09 at 05 12 26_007c520f](https://github.com/user-attachments/assets/17138e97-96b4-43e2-acad-cbaa25cdb537)
-
-![WhatsApp Image 2025-09-09 at 05 12 26_bdd4420b](https://github.com/user-attachments/assets/0961e262-71f1-432d-9038-b67b5ab56247)
-
-![WhatsApp Image 2025-09-09 at 05 12 26_6baffe87](https://github.com/user-attachments/assets/9c3e1bea-a6ed-491f-ad0d-5c5daf4e4551)
 
 MNRL drops loss fast and then flattens, which matches its high dev accuracy: the contrastive term quickly organizes the embedding space and the classifier settles. Optimized Pipeline also falls steadily but a touch slower than MNRL (more parameters in the head to fit); it ends slightly below MNRL. Hybrid (MNRL + Optimized head) starts with the highest loss and reduces more slowly.
 SBERT and Stemming both show smooth, strong loss reductions, yet their dev accuracy lags; which is a representation of optimization is not equal to generalization case: the training objective is easier to satisfy than the true paraphrase decision.

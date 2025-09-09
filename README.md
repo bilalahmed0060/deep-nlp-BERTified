@@ -35,6 +35,402 @@ conda activate dnlp
 
 # Project Tasks
 
+##  1) Quora Question Pairs (QQP)
+
+### 1) File structure
+File structure for this task:
+```
+ ⁠project_root/
+├─ multitask_classifier_qqp.py
+├─ data/
+│  ├─ quora-paraphrase-train.csv
+│  ├─ quora-paraphrase-test-student.csv
+│  └─ quora-paraphrase-dev.csv
+├─ predictions/
+│  └─ bert/ 
+│     ├─ quora-paraphrase-dev-output.csv
+      └─ quora-paraphrase-test-output.csv
+```
+
+### 2) Execution modes
+1) Baseline:
+Trains Bert with plain binary cross-entropy (original baseline).
+```
+python multitask_classifier.py \
+--task=qqp \
+--option=finetune \
+--use_gpu \
+```
+2) Multiple Negative Ranking Loss (MNRL) + Optimal Hyperparameters:
+   
+```
+python multitask_classifier_qqp.py \
+--task=qqp --option=finetune --use_gpu \
+--lr=2.2e-5 --batch_size=16 --hidden_dropout_prob=0.1 \
+--approach=mnrl
+```
+
+3) Optimized Pipeline (Stronger Head + Training Tweaks):
+```
+python multitask_classifier_qqp.py \
+--task=qqp -option=finetune --use_gpu \
+--lr=2.2e-5 --label_smoothing=0.05  \
+--approach=optimized_pipeline
+```
+
+4) MNRL + Optimized Pipeline + Optimal Hyperparameters:
+```
+python multitask_classifier_qqp.py \
+--task=qqp --option=finetune --use_gpu \
+--lr=3.0e-5 --batch_size=16 \
+--warmup_ratio=0.06 --label_smoothing=0.05 \
+--pos_weight=1.2 --mnr_temperature=0.05 --mnr_symmetric \
+--proj_dim=128 --hidden_dropout_prob=0.1 \
+--approach=mnrl_with_optimized_pipeline
+```
+
+5) Sentence Bert:
+```
+python multitask_classifier_qqp.py \
+--task=qqp --option=finetune --use_gpu \
+--lr 2.2e-5 --hidden_dropout_prob 0.1 \
+--approach=sbert
+```
+
+6) Stemming:
+```
+python multitask_classifier_qqp.py \
+--task=qqp --option=finetune --use_gpu \
+--lr=2.2e-5 --hidden_dropout_prob=0.1 \
+--stem_aug --stemmer porter -stem_alpha=0.5 \
+--approach=stemming
+```
+
+### 3) CLI quick reference — QQP
+```
+# General
+--use_gpu                             Use CUDA if available
+--seed                                Global random seed (default: 11711)
+--epochs                              Training epochs (default: 10)
+--lr                                  AdamW learning rate (default: 1e-5)
+
+# Model & Tokenization
+--option                              BERT training mode (default: pretrain)
+--batch_size                          Samples per update (default: 64)
+--max_seq_length                      Maximum token length (default: 128)
+
+# Head (QQP) & Dropout
+--hidden_dropout_prob                 Dropout rate for layers (default: 0.3)
+--qqp_hidden                          Hidden units in head (default: 512)
+
+# Optimization & Scheduling
+--weight_decay                        L2 regularization strength (default: 0.01)
+--warmup_ratio                        LR warmup proportion (default: 0.1)
+--max_grad_norm                       Gradient clipping threshold (default: 1.0)
+--fp16                                Enable mixed-precision training
+--grad_ckpt                           Enable gradient checkpointing in BERT
+
+# Loss Controls & Class Imbalance
+--label_smoothing                     Binary label smoothing for QQP  (default: 0.0)
+--pos_weight                          Positive class weight for BCE; 0 disables (default: 0.0)
+
+# Contrastive (MNRL) Controls
+--mnr_weight                          Weight for Multiple Negative Ranking loss (default: 0.2)
+--mnr_temperature                     Softmax temperature for MNR (default: 0.05)
+--mnr_symmetric                       Apply MNR both directions
+--proj_dim                            Projection dim before QQP head/MNR (default: 256)
+    
+# Stemming Consistency (R-Drop)
+--stem_aug                            Use stemming-based consistency loss for QQP
+--stemmer                             Stemming algorithm choice (default: porter)
+--stem_alpha                          Weight of KL in stemming consistency (default: 1.0)
+    
+# Approach Selector
+--approach                            Choose between 5 approaches for improving QQP Baseline (default: mnrl)
+                                      (choices: "mnrl", "optimized_pipeline", "mnrl_with_optimized_pipeline", "sbert", "stemming")
+
+```
+
+
+# Methodology
+This task targets paraphrase identification on the Quora Question Pairs (QQP) benchmark. Our goal is to improve semantic equivalence detection by extending a standard Siamese BERT baseline into a flexible research pipeline with switchable modules and training options exposed via command-line flags. Within this framework we implement and compare several upgrades an interaction-based classification head with modern optimization, SBERT-style pooling, contrastive learning (MNRL), and a stemming-based consistency regularizer individually and in combination. We evaluate on a fixed dev split using Accuracy (primary) and F1 (secondary), and analyze training dynamics to understand convergence and generalization. We have worked on 5 improvements in this documentation which are discussed below.
+
+**1 - Multiple Negative Ranking Loss (MNRL)**
+   
+- **Architecture:** We turn the baseline QQP classifier into a joint contrastive + classification model. In code, qqp_embed_and_logit() encodes each question with a shared BERT, builds interaction features `[e1, e2, |e1−e2|, e1*e2]` through a small FFN head to produce the BCE logit, and also projects each sentence embedding (`self.qqp_proj + GELU`) then L2-normalizes it for the contrastive term. The InfoNCE-style Multiple Negative Ranking loss is implemented in multiple_negative_ranking_loss(), using in-batch negatives (and optional symmetric direction). Training minimizes
+`total_loss = BCEWithLogits(logit, y) + λ · MNR(z1, z2; τ)` with mixed precision and AdamW.
+    
+- **How this extends existing ideas:** a) Baseline reuse: Siamese BERT and BCE head are kept (shared encoder, pairwise head). b) Extensions in the Baseline for the approach: (1) Contrastive shaping of the embedding space via MNR on normalized projections; (2) a stronger interaction head (hidden layer + LayerNorm + GELU) rather than a single linear layer; (3) efficient in-batch negatives so no mined negatives are required; (4) engineering supports: AMP, optional `grad-ckpt`, linear warmup/decay, CLI flags to expose all knobs.
+
+- **Why it helps:** BCE alone only pushes the decision boundary. MNRL pulls true pairs together and pushes all other pairs apart in the global embedding geometry, so the head sees cleaner, more separable inputs, especially for lexically different but semantically identical questions. This reduces near-duplicate errors and improves generalization.
+
+- **Evaluation protocol & metrics:** We follow the project’s eval (`model_eval_multitask` + `eval_qqp_simple`). On QQP dev we report Accuracy and F1 (with Precision/Recall). We save the best dev checkpoint. Result (QQP dev): `87.7% accuracy` (`three-digit precision: 0.877`), improving the `baseline 0.781` and edging the optimized head alone (≈0.867–0.872 across runs).
+
+**2 - Optimized Pipeline (Stronger Head + Training Tweaks)**
+
+- **Architecture:** We kept the BERT encoder and replaced the baseline “concat → linear” QQP head with a stronger interaction head: we form features `[e1, e2, |e1−e2|, e1*e2]` from the two sentence embeddings, pass them through a small FFN (Linear → GELU → Dropout → LayerNorm → Linear), and train with BCEWithLogits plus practical tweaks (AdamW with weight decay, linear warmup/decay LR scheduler, gradient clipping, optional label smoothing, and pos_weight for class imbalance).
+     
+- **How this extends existing ideas:** We build directly on the standard Siamese BERT baseline by adding classic pairwise interaction features for sentence pairs and modern optimization best practices from Transformer finetuning (AdamW, warmup/decay, clipping), without changing the backbone or its pretraining.
+     
+- **Why it helps:** The interaction features encode symmetry and magnitude relations that a simple concat layer misses, letting the head learn clearer boundaries between paraphrase and non-paraphrase; meanwhile, AdamW + warmup/decay and clipping stabilize updates and reduce overfitting, and label smoothing/pos_weight improve robustness on borderline or noisy labels.
+     
+- **Evaluation protocol & metrics:** We train on QQP for `10 epochs` and select the checkpoint with the best dev accuracy. We report Accuracy (primary) and Precision/Recall/F1 (secondary) computed from dev predictions, with three-decimal precision (e.g., `accuracy = 0.867`)
+
+**3 - MNRL + Optimized Pipeline**
+   
+- **Architecture:** We combined the Optimized interaction head with a contrastive branch: sentence embeddings (BERT `[CLS]`) feed (a) an interaction FFN head using `[e1, e2, |e1−e2|, e1*e2]` (Linear → GELU → Dropout → LayerNorm → Linear) for the QQP logit, and (b) a projection to `proj_dim + GELU + L2-normalization` for a Multiple Negative Ranking (InfoNCE) loss. Training uses a joint objective `BCEWithLogits + λ·MNR`, with `temperature τ`, alongside AdamW (weight decay), linear warmup/decay, gradient clipping, and optional AMP.
+
+- **How this extends existing ideas:** It merges two proven ideas, pairwise interaction features (stronger classifier capacity) and contrastive learning (better global embedding geometry) without changing the BERT backbone or requiring external pretraining, exposing CLI knobs (`--mnr_weight`, `--mnr_temperature`, `--proj_dim`, `--qqp_hidden`, etc.) to balance both signals.
+
+- **Why it helps:** The interaction head sharpens local decision boundaries between paraphrase/non-paraphrase, while the MNR loss organizes the global embedding space by pulling true pairs together and pushing in-batch negatives apart; together, the classifier sees cleaner, more separable inputs, improving robustness on wording-diverse duplicates.
+
+- **Evaluation protocol & metrics:** We train for `10 epochs` and keep the checkpoint with the best dev accuracy. We report Accuracy (primary) and Precision/Recall/F1 (secondary) to three-decimal precision (e.g., 0.872). In our run, the hybrid reached `0.872 dev accuracy` (≈87.2%), close to the best MNRL-only setting and above the baseline.
+
+**4 - Sentence Bert**
+
+- **Architecture:** We swapped the baseline’s `[CLS]` pooling for an SBERT-style encoder that mean-pools the last_hidden_state with the attention mask (optionally L2-normalizing), builds pairwise interaction features `[u, v, |u−v|, u*v]`, applies dropout, and uses a single linear layer to predict the QQP logit with BCEWithLogits no contrastive pretraining or deeper head.
+
+- **How this extends existing ideas:** Starting from the standard Siamese BERT baseline (concat + linear over `[CLS]`), we adopt SBERT’s pooling to better capture sentence-level semantics and keep lightweight interaction features; this reuses the same backbone/training loop while changing only the pooling strategy and pair feature construction.
+
+- **Why it helps:** Attention-masked mean pooling aggregates information over all tokens, producing sentence vectors that are less noisy than `[CLS]`, and interaction features add simple symmetry/magnitude cues; however, without a contrastive objective or a deeper head, it struggles to separate hard, lexically diverse paraphrases, so gains are modest.
+
+- **Evaluation protocol & metrics:** We train on QQP for `10 epochs` and retain the best dev checkpoint by Accuracy; we report Accuracy (primary) and Precision/Recall/F1 (secondary) to three-decimal precision. In our run, SBERT reached `0.811 dev accuracy` (≈81.1%), a small lift over the baseline (0.781) but below the optimized head and MNRL variants.
+
+**5 - Stemming**
+
+- **Architecture:** We kept the baseline BERT setup ( `[CLS] pooling`, concat [e1; e2], single linear head, BCEWithLogits ) but added an R-Drop–style consistency loss with stemming: for each QQP pair we decode, stem both questions (Porter/Snowball), re-tokenize, run a second forward pass, and train with
+`loss = ½(BCE(orig) + BCE(stem)) + α · SymmetricKL(σ(orig) || σ(stem))` (see `rdrop_bce_loss`, `--stem_aug`, `--stemmer`, `--stem_alpha`).
+
+- **How this extends existing ideas:** It builds on the Siamese BERT baseline by adding a data/view consistency regularizer rather than changing the encoder or head—using classic text normalization (stemming) to create a second “view” and enforcing output agreement between original and stemmed inputs.
+
+- **Why it helps:** Stemming reduces sensitivity to harmless word-form changes, so the model focuses on meaning instead of inflection; the R-Drop term penalizes disagreement between the two views, improving robustness—though over-aggressive stemming can drop meaning, which limits gains.
+
+- **Evaluation protocol & metrics:** We train on QQP for `10 epochs` and keep the best dev checkpoint by Accuracy; we report Accuracy (primary) and Precision/Recall/F1 (secondary). This variant achieved `0.795 dev accuracy` (79.5%), a +0.014 lift over the baseline (0.781) but below SBERT (0.811), the Optimized Pipeline, and MNRL.
+
+# Experiments
+**1 - Multiple Negative Ranking Loss (MNRL)**
+- **Objective**: Replace the baseline BERT model and train the QQP paraphrase classifier jointly with a contrastive objective (Multiple Negative Ranking Loss, InfoNCE-style) so that true pairs are pulled together and in-batch negatives are pushed apart, while still optimizing the usual BCE classification loss.
+- **Expectations**: A clear accuracy gain over the baseline BCE-only model and a modest edge over a stronger classifier head. The MNR objective should pull true pairs together and push non-pairs apart, giving better generalization especially on hard negatives.
+- **Changes wrt to Baseline**:
+  
+    1. Embedding: Baseline used BERT’s pooler_output (`[CLS]`); we now mean-pool tokens with an attention mask, project to 256d with `GELU`, and L2-normalize for contrastive learning.
+    2. Head: Baseline concatenated `[e1; e2]` and fed a single linear layer; we now use interaction features `[z1, z2, |z1−z2|, z1*z2]` followed by a hidden layer, LayerNorm, GELU, then a final linear.
+    3. Loss: Baseline optimized only `BCEWithLogits`; we now train with BCE plus a weighted Multiple Negative Ranking (InfoNCE) term using in-batch negatives with configurable temperature/weight.
+    4. Training: Baseline ran standard FP32 with blocking transfers; we now enable AMP, optional gradient checkpointing, non-blocking .to() calls, and expose CLI flags (`--mnr_weight`, `--mnr_temperature`, `--mnr_symmetric`, `--proj_dim`, `--fp16`, `--grad_ckpt`, `--max_seq_length`).
+
+- **Hyperparameter Tuning**: Across sweeps, the learning rate from `1e-5 to 5e-5` showed a clear optimal: 2.2e-5 at batch 16 delivered the best dev results, with 1e-5 close behind. Batch sizes 16–32 worked best, large enough to give MNRL more in-batch negatives and stable training while 64 didn’t outperform the well-tuned smaller batches. For the contrastive term, mnr_weight `λ ≈ 0.2` and temperature `τ ≈ 0.05` were consistently reliable; pushing `λ` too high started to fight the BCE objective, and very low/high `τ` weakened the softmax contrast. Projection dims 128–256 both performed well, with the lower dim sharpening the contrastive task without overfitting noise. Finally, `dropout ≈ 0.1`, `weight_decay = 0.01`, and `grad_clip = 1.0` served as steady stabilizers throughout. (Detail of hyperparameter tuning present in Hyperparameter Optimization section.
+- **Results**: MNRL `accuracy (QQP dev) is 87.7` from the best hyperparameters which is the best of the five appproaches that were tried and a sizable `+9.6 pt` over the baseline which had an accuracy of 78.1.
+  Evauluation Metrics used for MNRL are Accuracy and F1 Score
+
+| Metric             | Epoch 1 | Epoch 2 | Epoch 3 | Epoch 4 | Epoch 5 | Epoch 6 | Epoch 7 | Epoch 8 | Epoch 9 | Epoch 10 |
+|--------------------|---------|---------|---------|---------|---------|---------|---------|---------|---------|----------|
+| Dev Accuracy (%)   | 86.3    | 86.9    | 87.2    | 87.5    | 87.2    | 87.6    | 87.3    | 87.7    | 87.2    | 87.4     |
+| F1 Score | 0.823      | 0.836      | 0.838      | 0.835       | 0.838      | 0.837      | 0.836       | 0.840       | 0.836     | 0.839        |
+
+
+
+
+- **Discussion**: MNRL gave the biggest lift (87.7 vs. baseline 78.1), beating the Optimized Pipeline (86.7), SBERT (81.1), and Stemming (79.5) because its contrastive loss shapes the global embedding space pulling true pairs together and pushing negatives apart so the classifier faces simpler boundaries. It especially reduced errors on near-duplicate but lexically different pairs and improved both accuracy and F1, matching our expectations. Gains were sensitive to batch size (more in-batch negatives helps), temperature (~0.05 worked well), and the MNR weight (small to moderate; too large harms BCE). We also saw more robustness to surface wording changes. Compared with a stronger head alone, MNRL helps even without extra features by improving the representation geometry that the head operates on. Overall, the best behavior came from balancing BCE with a moderate MNR weight.
+
+**2 - Optimized Pipeline (Stronger Head + Training Tweaks)**
+- **Objective**: Strengthen the QQP baseline without contrastive learning by keeping the BERT encoder fixed, but replacing the simple concat+linear classifier with a richer interaction head and steadier optimization so the model can separate paraphrases more cleanly.
+- **Expectations**: We expected a large gain over the baseline but slightly below MNRL, since no global embedding shaping is applied.
+- **Changes wrt to Baseline**:
+  
+    1. Embedding: Baseline used BERT’s pooler_output (`[CLS]`) as the sentence vector; we now keep the exact same embedding (no change).
+    2. Head: Baseline did a simple `[e1; e2]` → linear classifier; we now use richer interaction features `[e1, e2, |e1−e2|, e1*e2]` followed by a small FFN (Linear → GELU → Dropout → LayerNorm → Linear) for a more expressive decision boundary.
+    3. Loss: Baseline trained with plain BCEWithLogitsLoss; we now still use BCE and added optional label smoothing and pos_weight to handle borderline cases and class imbalance.
+    4. Training: Baseline used AdamW with a fixed LR, no scheduler, no gradient clipping; we now use `AdamW` + weight decay, linear warmup/decay scheduler, and gradient clipping, with CLI knobs to tune them.
+    5. Extras: CLI flags were exposed (`--weight_decay`, `--warmup_ratio`, `--max_grad_norm`, `--label_smoothing`, `--pos_weight`, `--qqp_hidden`) and (in our broader setup) added an extra QQP eval helper for Accuracy/F1 that didn't exist in the baseline.
+ 
+- **Results**: `QQP dev accuracy = 86.7`, up `+8.6 pts` from the baseline 78.1. We tracked the evaluation metrics: Accuracy (primary) and F1 Score for fairness on class balance.
+
+| Metric            | Epoch 1 | Epoch 2 | Epoch 3 | Epoch 4 | Epoch 5 | Epoch 6 | Epoch 7 | Epoch 8 | Epoch 9 | Epoch 10 |
+|:------------------|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:--------:|
+| Dev Accuracy (%)  |  80.6   |  84.9   |  84.9   |  86.2   |  85.8   |  86.0   |  86.5   |  86.2   |  86.7   |   86.6   |
+| F1 Score          |  0.775  |  0.816  |  0.819  |  0.828  |  0.827  |  0.829  |  0.832  |  0.830  |  0.832  |  0.833   |
+
+
+
+- **Discussion**: The optimized pipeline works because the new interaction head captures how the two sentences relate (it uses their difference and element-wise product), which a simple concat+linear can’t do. AdamW with warmup/decay and gradient clipping makes training steadier and helps avoid overfitting. It’s a bit behind MNRL since it doesn’t reshape the whole embedding space so the decision boundaries improve, but not as universally for lexically diverse duplicates. RGains were consistent across seeds, with best results around a 512-unit hidden layer and moderate dropout. Overall, it beat SBERT-pooling and stemming by a clear, steady margin, without extra pretraining or risky text normalization.
+
+**3 - MNRL + Optimized Pipeline**
+- **Objective**: Replace the baseline BERT QQP classifier with a joint objective that combines standard BCE classification with a contrastive Multiple Negative Ranking Loss (InfoNCE-style), so true pairs are pulled together and in-batch negatives are pushed apart while keeping the classifier strong and training efficient.
+- **Expectations**: Achieve a clear gain over the baseline BCE-only model and a small edge over a stronger interaction head alone, with the biggest improvements on hard, lexically diverse duplicates.
+- **Changes wrt to Baseline**:
+  
+    1. Embedding: Baseline used the BERT [`CLS`] pooled vector only; we now keep `[CLS]` but add a projection to proj_dim with GELU and L2-normalization for contrastive learning.
+    2. Head: Baseline did simple `[e1; e2]` → one linear layer; we now use interaction features `[e1, e2, |e1−e2|, e1*e2]` fed to a small FFN (Linear→GELU→Dropout→LayerNorm→Linear).
+    3. Loss: Baseline optimized BCEWithLogits only; we now optimize BCEWithLogits plus a weighted Multiple Negative Ranking (InfoNCE) contrastive loss with in-batch negatives (tunable temperature/weight).
+    4. Training: Baseline used Adam/AdamW in FP32 with fixed LR and no scheduler/AMP/clipping; we now use AdamW+weight decay, linear warmup/decay, AMP (autocast+GradScaler), optional grad clipping and label smoothing/pos-weight—exposed via CLI flags.
+ 
+- **Results**: `QQP dev accuracy = 87.2`, up `+9.1 pts` from the baseline 78.1 which is above using optimized pipeline alone but slightly below MNRL. We tracked the evaluation metrics: Accuracy (primary) and F1 Score for fairness on class balance.
+
+| Metric            | Epoch 1 | Epoch 2 | Epoch 3 | Epoch 4 | Epoch 5 | Epoch 6 | Epoch 7 | Epoch 8 | Epoch 9 | Epoch 10 |
+|:------------------|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:--------:|
+| Dev Accuracy (%)  |  81.1   |  85.4   |  86.1   |  86.8   |  86.2   |  86.9   |  86.7   |  87.2   |  87.0   |   87.2   |
+| F1 Score          |  0.786  |  0.823  |  0.832  |  0.836  |  0.832  |  0.837  |  0.836  |  0.839  |  0.838  |  0.839   |
+  
+- **Discussion**: This hybrid approach did better than the baseline (87.2% vs 78.1%) because the interaction head makes pairwise decisions sharper and the contrastive term organizes sentence embeddings, so near-duplicates with different words are easier to separate. It was a bit lower than the best MNRL-only run (87.6%) likely because the loss balance wasn’t perfect. The results mostly matched expectations: clear gains over baseline and roughly in line with MNRL. We saw consistent patterns: bigger batches (more in-batch negatives) help, and label smoothing/pos-weight give small boosts on borderline or imbalanced cases.
+
+**4 - Sentence Bert**
+- **Objective**: Replace the baseline’s `[CLS]` pooling with SBERT-style mean pooling over token embeddings (attention-masked) to form cleaner sentence vectors for QQP, while keeping a simple binary classifier.
+- **Expectations**: A modest gain over baseline by smoothing sentence representations and making reworded duplicates easier to match, though likely below contrastive/MNRL and the stronger interaction head.
+- **Changes wrt to Baseline**:
+
+    1. Embedding: Baseline used the BERT `[CLS]` pooled vector; SBERT replaces it with attention-masked mean pooling over tokens (optionally L2-normalized) to form the sentence embedding.
+    2. Head: Baseline did simple `[e1; e2]` → linear; SBERT keeps a lightweight head but feeds it richer interaction features `[u, v, |u−v|, u*v]` with dropout before the final linear layer.
+    3. Loss: Baseline used BCEWithLogits for QQP; SBERT keeps the same losses with no added contrastive pretraining term.
+    4. Training: Baseline trained with AdamW in FP32 and no warmup/decay; SBERT uses the same setup (no MNR, no scheduler), so the primary change is the pooling strategy.
+ 
+- **Results**: `QQP dev accuracy = 81.1%` (primary metric), a `+3.0 pts` gain over the baseline (78.1) but below the Optimized Pipeline (≈86.7) and MNRL (≈87.6); F1 Score tracked the same trend as accuracy for sentence bert approach.
+
+| Metric            | Epoch 1 | Epoch 2 | Epoch 3 | Epoch 4 | Epoch 5 | Epoch 6 | Epoch 7 | Epoch 8 | Epoch 9 | Epoch 10 |
+|:------------------|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:--------:|
+| Dev Accuracy (%)  |  78.1   |  80.1   |  80.1   |  79.9   |  81.1   |  80.0   |  80.0   |  79.4   |  80.1   |   79.9   |
+| F1 Score          |  0.682  |  0.717  |  0.737  |  0.742  |  0.737  |  0.739  |  0.741  |  0.737  |  0.741  |  0.739   |
+  
+- **Discussion**: Mean pooling likely stabilized sentence representations and gave a small lift, but it might have improved more with contrastive shaping (e.g., MNRL) or a deeper interaction head to capture subtle phrasing differences; pretraining SBERT on NLI/STS-style data could further separate hard negatives and boost accuracy but was not experimented with due to time constraints.
+
+**5 - Stemming**
+- **Objective**: Make the QQP classifier robust to morphology by enforcing prediction consistency between each original question pair and a stemmed view `(Porter/Snowball)`, while keeping the base BERT classifier unchanged.
+- **Expectations**: A small, steady bump over baseline by making the model ignore harmless word-form changes.
+- **Changes wrt to Baseline**:
+
+    1. Embedding: Baseline uses BERT’s `[CLS]` pooled vector with dropout; this approach keeps `[CLS]` exactly the same (no embedding change).
+    2. Head: Baseline concatenates `[e1; e2]` and applies a single linear layer; this approach uses the same concat+linear head (no change).
+    3. Loss: Baseline trains with BCEWithLogits only; this approach switches to an R-Drop objective—average BCE on (original, stemmed) logits plus α·symmetric KL between their sigmoid probabilities.
+    4. Training: Baseline does one forward pass per pair; this approach enables `--stem_aug` to decode → stem `(Porter/Snowball via --stemmer)` → re-tokenize to the same max length and run a second forward per batch, leaving the optimizer/loop otherwise unchanged.
+ 
+- **Results**: Stemming consistency achieved `79.5% QQP` dev accuracy which is `+1.4 pts` over the baseline (78.1) but `−1.6 pts` behind SBERT (81.1). This approach was evaluated using metrics: Accuracy and F1 Score.
+
+| Metric            | Epoch 1 | Epoch 2 | Epoch 3 | Epoch 4 | Epoch 5 | Epoch 6 | Epoch 7 | Epoch 8 | Epoch 9 | Epoch 10 |
+|:------------------|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:--------:|
+| Dev Accuracy (%)  |  76.2   |  78.0   |  78.4   |  79.5   |  78.7   |  77.8   |  78.0   |  78.0   |  78.7   |   78.8   |
+| F1 Score          |  0.618  |  0.688  |  0.697  |  0.707  |  0.715  |  0.709  |  0.716  |  0.711  |  0.716  |  0.711   |
+  
+  This approach increases training cost because each batch requires a second forward pass on the stemmed texts.
+- **Discussion**: Consistency regularization gave a small boost because it taught the model to ignore harmless word-form changes, but heavy stemming sometimes removed meaning, which limited the gains and occasionally hurt tricky cases. Results depended a lot on the α weight (too high made predictions too “blurry”) and on which stemmer was used. Training was slower since we had to run a second pass on the stemmed text. In practice, lighter cleanup (like lemmatization) or combining this idea with contrastive pretraining would likely give more reliable improvements.
+
+
+## Results 
+
+| **Quora Question Pairs (QQP)** | **Accuracy** | **F1 Score** |
+|----------------|-----------|-----------|
+|Baseline |78.1%           |...            | 
+|Multiple Negative Ranking Loss (MNRL)         |87.5%            |            0.841| 
+|**Multiple Negative Ranking Loss (MNRL) + Optimal Hyperparameters**        |**87.7%**           |            **0.840**|
+|Optimized Pipeline (Stronger Head + Training Tweaks)        |86.7%|            0.833|
+|MNRL + Optimized Pipeline      |87.0|            0.839|
+|MNRL + Optimized Pipeline + Optimal Hyperparameters       |87.2|         0.839|
+|Sentence Bert        |81.1|            0.742|
+|Stemming (R-Drop Augmentation)       |79.5|            0.716|
+ 
+
+### Hyperparameter Optimization 
+
+Hyperparameter tuning is the process of picking the best values for settings the model doesn’t learn by itself like learning rate, batch size, or hidden dropout probability to maximize validation performance. I performed hyperparameter search on my best model approach for QQP: Multiple Negative Ranking Loss (MNRL) since it was already the top performer and is very sensitive to settings. I focused on the three knobs that matter most for contrastive training:
+
+1. `Learning rate (LR)` — stability vs. speed.
+2. `Batch size` — more in-batch negatives for MNRL.
+3. `Dropout` — regularization.
+
+I kept the contrastive specifics fixed to isolate these effects: `mnr_weight = 0.20`, `temperature = 0.05`, `5 epochs`, save best dev checkpoint, and report Accuracy (primary) plus P/R/F1 for sanity.
+
+| Set | Learning Rate | Batch Size | Dropout | Best Dev Acc | Notes |
+|-----|---------------|------------|---------|--------------|-------|
+| 1   | 1e-5          | 64         | 0.30    | 0.871        |Larger batch; stable training. |
+| 2   | 1e-5          | 32         | 0.30    | 0.873        |Slight gain over Set 1. |
+| 3   | 1e-5          | 16         | 0.30    | 0.874        |Best at LR=1e-5; smaller batch helped a bit. |
+| 4   | 2.2e-5        | 16         | 0.30    | 0.875        |Clear bump from higher LR. |
+| 5   | 2.2e-5        | 16         | 0.20    | 0.873        |Same LR; lowering dropout didn’t help. |
+| **6**   | **2.2e-5**        | **16**         | **0.10**    | **0.876**        |**New best at same LR with lower dropout.** |
+| 7   | 5e-5          | 16         | 0.30    | 0.868        |Too high LR—slight drop. |
+| 8   | 5e-5          | 16         | 0.20    | 0.866        |Lower dropout didn’t help at high LR. |
+| 9   | 5e-5          | 16         | 0.10    | 0.868        |Even lower dropout still below best. |
+
+The best, most reliable configuration was `LR = 2.2e-5`, `batch = 16`, `dropout = 0.1` (Set 6), with `dev accuracy = 87.6 %` on which I later ran 10 epochs and saved it as my best model as it gave me dev accuracy of 87.7 % when I ran the same settings for 10 epochs.
+
+#### What changed when I changed each hyperparameter
+1) Learning rate (LR)
+ - Trend: Going from `1e-5 → 2.2e-5` improved or matched the best dev accuracy (0.876), and generalized better at 2.2e-5.
+ - Too high hurts: 5e-5 consistently dropped accuracy to 0.866–0.868, suggesting the joint BCE+MNR objective became less stable at that speed.
+ - Takeaway: A moderate LR (~2.2e-5) is optimal for MNRL here.
+2) Batch size
+ - Why bigger might help: With MNRL, each extra sample in a batch becomes a negative example, so larger batches can make the contrastive signal stronger.
+ - What I actually saw: Keeping LR=1e-5 and dropout=0.3, a batch of 16 scored 0.874, 32 scored 0.873, and 64 dropped to 0.871 so the smallest batch won here.
+ - Bottom line: 16–32 worked best with my optimizer/schedule; just making the batch huge didn’t automatically improve accuracy.
+3) Dropout
+ - At `LR=2.2e-5`, batch=16: Reducing dropout from 0.30 → 0.10 gave a small gain (0.875 → 0.876).
+ - At `LR=5e-5`, batch=16: Lowering dropout 0.30 → 0.20/0.10 did not help and even dipped (0.868 → 0.866/0.868).
+ - Takeaway: Dropout interacts with LR—lower (0.10) worked best at a moderate LR (2.2e-5), while higher LR (5e-5) needed stronger regularization (≈0.30)
+
+How I picked the final MNRL config (in plain English)
+- Fix the contrastive knobs: set mnr_weight `λ = 0.20` and temperature `τ = 0.05`, train 5 epochs, and keep the best dev checkpoint (`seed=11711`).
+- Find a good learning rate first: with batch 16, sweep LRs; 2.2e-5 gave consistently strong dev scores and the cleanest peak (0.876).
+- Check batch size next: at good LRs `(1e-5, 2.2e-5)`, batch 16–32 was best; 64 didn’t help despite more in-batch negatives.
+- Tune dropout as needed: after LR, adjust regularization; dropout 0.10 proved most stable at `LR=2.2e-5` (higher LR needed more dropout).
+- Why this isn’t random: each tweak follows MNRL behavior batch controls negatives, LR balances BCE vs. contrastive loss, and dropout stabilizes updates.
+
+## Visualizations 
+
+I have performed 5 improvements (approaches). In these visuals, I have done a comparative study on the metrics: Dev Accuracy and Training Loss. 
+
+<img width="574" height="452" alt="image" src="https://github.com/user-attachments/assets/a6377830-0789-441a-a8b3-d06268ebad0d" />
+
+<img width="561" height="450" alt="image" src="https://github.com/user-attachments/assets/02c56848-b076-424f-b166-602a41c8ed25" />
+
+<img width="581" height="451" alt="image" src="https://github.com/user-attachments/assets/62cbecc4-4629-40f4-96bf-4f4a07bb02a8" />
+
+<img width="570" height="455" alt="image" src="https://github.com/user-attachments/assets/6a910967-2319-451e-b317-709a30e1c8aa" />
+
+<img width="573" height="448" alt="image" src="https://github.com/user-attachments/assets/3158bbb0-3f44-4620-906a-73670b797672" />
+
+
+**For Dev Accuracy:**
+
+**1. Which converges fastest?:**
+The Optimized Pipeline and Hybrid (MNRL + Optimized Pipeline) jump the quickest (big gains by epoch 2–3), because the interaction head immediately gives useful pairwise features; SBERT and Stemming also rise early but hit lower ceilings; MNRL improves more gradually and peaks around epoch 6–10.
+
+**2. Which finishes highest?:**
+MNRL finishes the highest at dev accuracy 87.4%, followed by the Hybrid at 87.2%, and then Optimized Pipeline at 86.6%. SBERT and Stemming peak at 81.1% and 79.5% respectively. The contrastive loss (MNRL) forms a better global embedding space, giving the classifier easier boundaries and the best final accuracy.
+
+**3. Does faster convergence mean better in the end?:**
+Not necessarily since Optimized Pipeline converges fastest but finishes below MNRL. Quick boundary learning helps early, but without contrastive pressure the embedding geometry isn’t as clean. MNRL needs a few more epochs to fully shape the space and increase further more.
+
+**4. Patterns to note:**
+Methods that add pairwise interaction features and/or a contrastive objective not only reach higher accuracy but also train more steadily in later epochs. Pure text normalization (Stemming) is fragile; representation-level changes (SBERT) gives only small gains unless you pair it with contrastive training or a stronger classifier head.
+
+<img width="564" height="453" alt="image" src="https://github.com/user-attachments/assets/71d17720-4aa7-4718-adc4-7da76c52af56" />
+<img width="564" height="453" alt="image" src="https://github.com/user-attachments/assets/3f717cc3-840a-440f-aa79-28510b2596f3" />
+<img width="564" height="455" alt="image" src="https://github.com/user-attachments/assets/fe53a0f9-eadb-49c1-9612-2d305e86a7b9" />
+<img width="564" height="452" alt="image" src="https://github.com/user-attachments/assets/b4ca23bd-45cb-4ee4-a4a9-3aadfe719bcb" />
+<img width="564" height="451" alt="image" src="https://github.com/user-attachments/assets/0c0fe141-cb5d-4302-9b7d-6a09b0e520f7" />
+
+
+
+**For Training Loss:**
+
+MNRL drops loss fast and then flattens, which matches its high dev accuracy: the contrastive term quickly organizes the embedding space and the classifier settles. Optimized Pipeline also falls steadily but a touch slower than MNRL (more parameters in the head to fit); it ends slightly below MNRL. Hybrid (MNRL + Optimized head) starts with the highest loss and reduces more slowly.
+SBERT and Stemming both show smooth, strong loss reductions, yet their dev accuracy lags; which is a representation of optimization is not equal to generalization case: the training objective is easier to satisfy than the true paraphrase decision.
+
+## Members Contribution 
+Explain what member did what in the project:
+
+**Areesha Jiwani:** Implemented QQP Baseline and Improvements.
+
+
+# AI-Usage Card
+[![AI-Usage Card QQP](https://img.shields.io/badge/AI_Usage_Card-pdf-red.svg)](./documentation/AI-Usage-Card-QQP.pdf/)
+
+# References 
+- Jacob Devlin, Ming-Wei Chang, Kenton Lee, Kristina Toutanova (2019) — BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.
+- Ilya Loshchilov, Frank Hutter (2019) — Decoupled Weight Decay Regularization (AdamW).
+- Tianyu Gao; Xingcheng Yao; Danqi Chen (2021) — SimCSE: Simple Contrastive Learning of Sentence Embeddings.
+- Nils Reimers; Iryna Gurevych (2019) — Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.
+- Martin F. Porter (1980) — An Algorithm for Suffix Stripping.
+
+
 ## 3) Sentiment Analysis (SST):
 ### 1) Finetuning Setup 
 

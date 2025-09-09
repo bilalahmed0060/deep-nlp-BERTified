@@ -375,11 +375,6 @@ How I picked the final MNRL config (in plain English)
 ## Visualizations 
 
 I have performed 5 improvements (approaches). In these visuals, I have done a comparative study on the metrics: Dev Accuracy and Training Loss.
-https://github.com/bilalahmed0060/deep-nlp-BERTified/blob/main/Visualizations/Dev%20Accuracy%201.png
-
-
-![Alt text](Visualizations/Dev Accuracy 1.png)
-
 
 <img width="574" height="452" alt="image" src="https://github.com/user-attachments/assets/a6377830-0789-441a-a8b3-d06268ebad0d" />
 
@@ -421,11 +416,9 @@ SBERT and Stemming both show smooth, strong loss reductions, yet their dev accur
 
 
 # References 
-- Jacob Devlin, Ming-Wei Chang, Kenton Lee, Kristina Toutanova (2019) — BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.
-- Ilya Loshchilov, Frank Hutter (2019) — Decoupled Weight Decay Regularization (AdamW).
-- Tianyu Gao; Xingcheng Yao; Danqi Chen (2021) — SimCSE: Simple Contrastive Learning of Sentence Embeddings.
-- Nils Reimers; Iryna Gurevych (2019) — Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.
-- Martin F. Porter (1980) — An Algorithm for Suffix Stripping.
+- Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/pdf/1810.04805.pdf).
+- Gao, T., Yao, X., & Chen, D. (2021). [SimCSE: Simple Contrastive Learning of Sentence Embeddings](https://arxiv.org/pdf/2104.08821.pdf).
+- Reimers, N., & Gurevych, I. (2019). [Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks](https://arxiv.org/pdf/1908.10084.pdf).
 
 
 ## 3) Sentiment Analysis (SST):

@@ -376,18 +376,18 @@ How we picked the final MNRL config (in plain English)
 
 Five approaches were performed for the improvements of the baseline task. In these visuals, we have done a comparative study on the metrics: Dev Accuracy and Training Loss.
 
-<img width="574" height="452" alt="image" src="https://github.com/user-attachments/assets/a6377830-0789-441a-a8b3-d06268ebad0d" />
-
-<img width="561" height="450" alt="image" src="https://github.com/user-attachments/assets/02c56848-b076-424f-b166-602a41c8ed25" />
-
-<img width="581" height="451" alt="image" src="https://github.com/user-attachments/assets/62cbecc4-4629-40f4-96bf-4f4a07bb02a8" />
-
-<img width="570" height="455" alt="image" src="https://github.com/user-attachments/assets/6a910967-2319-451e-b317-709a30e1c8aa" />
-
-<img width="573" height="448" alt="image" src="https://github.com/user-attachments/assets/3158bbb0-3f44-4620-906a-73670b797672" />
-
-
 **For Dev Accuracy:**
+
+![WhatsApp Image 2025-09-09 at 05 12 26_04839ff3](https://github.com/user-attachments/assets/6cc9386b-25e0-41d9-8eff-3ec64fbdd64a)
+
+![WhatsApp Image 2025-09-09 at 06 27 33_475389c3](https://github.com/user-attachments/assets/85a5118d-d25d-4134-a9aa-fc94de76881c)
+
+![WhatsApp Image 2025-09-09 at 05 12 26_c3374a57](https://github.com/user-attachments/assets/a76c4412-8c47-4060-bb06-e0dd1d44c70c)
+
+![WhatsApp Image 2025-09-09 at 05 12 26_a0140459](https://github.com/user-attachments/assets/01f1ccc0-2c5e-4490-ac77-ff12f207c024)
+
+![WhatsApp Image 2025-09-09 at 05 12 26_95f8906b](https://github.com/user-attachments/assets/04c58839-6511-49f1-8ec2-f8a158f052d3)
+
 
 **1. Which converges fastest?:**
 The Optimized Pipeline and Hybrid (MNRL + Optimized Pipeline) jump the quickest (big gains by epoch 2–3), because the interaction head immediately gives useful pairwise features; SBERT and Stemming also rise early but hit lower ceilings; MNRL improves more gradually and peaks around epoch 6–10.
@@ -401,15 +401,17 @@ Not necessarily since Optimized Pipeline converges fastest but finishes below MN
 **4. Patterns to note:**
 Methods that add pairwise interaction features and/or a contrastive objective not only reach higher accuracy but also train more steadily in later epochs. Pure text normalization (Stemming) is fragile; representation-level changes (SBERT) gives only small gains unless you pair it with contrastive training or a stronger classifier head.
 
-<img width="564" height="453" alt="image" src="https://github.com/user-attachments/assets/71d17720-4aa7-4718-adc4-7da76c52af56" />
-<img width="564" height="453" alt="image" src="https://github.com/user-attachments/assets/3f717cc3-840a-440f-aa79-28510b2596f3" />
-<img width="564" height="455" alt="image" src="https://github.com/user-attachments/assets/fe53a0f9-eadb-49c1-9612-2d305e86a7b9" />
-<img width="564" height="452" alt="image" src="https://github.com/user-attachments/assets/b4ca23bd-45cb-4ee4-a4a9-3aadfe719bcb" />
-<img width="564" height="451" alt="image" src="https://github.com/user-attachments/assets/0c0fe141-cb5d-4302-9b7d-6a09b0e520f7" />
-
-
-
 **For Training Loss:**
+
+![WhatsApp Image 2025-09-09 at 05 12 26_1ec04ad2](https://github.com/user-attachments/assets/24207ed7-06d6-49a4-9b63-c67002b9a1a3)
+
+![WhatsApp Image 2025-09-09 at 05 12 26_428cb9a4](https://github.com/user-attachments/assets/9371c370-f2b4-45a2-8e9f-08d5ea5c0ba2)
+
+![WhatsApp Image 2025-09-09 at 05 12 26_007c520f](https://github.com/user-attachments/assets/17138e97-96b4-43e2-acad-cbaa25cdb537)
+
+![WhatsApp Image 2025-09-09 at 05 12 26_bdd4420b](https://github.com/user-attachments/assets/0961e262-71f1-432d-9038-b67b5ab56247)
+
+![WhatsApp Image 2025-09-09 at 05 12 26_6baffe87](https://github.com/user-attachments/assets/9c3e1bea-a6ed-491f-ad0d-5c5daf4e4551)
 
 MNRL drops loss fast and then flattens, which matches its high dev accuracy: the contrastive term quickly organizes the embedding space and the classifier settles. Optimized Pipeline also falls steadily but a touch slower than MNRL (more parameters in the head to fit); it ends slightly below MNRL. Hybrid (MNRL + Optimized head) starts with the highest loss and reduces more slowly.
 SBERT and Stemming both show smooth, strong loss reductions, yet their dev accuracy lags; which is a representation of optimization is not equal to generalization case: the training objective is easier to satisfy than the true paraphrase decision.

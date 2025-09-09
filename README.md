@@ -1145,10 +1145,19 @@ Experiment 16: *{Pearson Loss + Mean Pooling + Deep NN with GELU + avg_sentence_
 
 
 ## 7) Visualizations 
+**Indivisual Visuals for dev correlation**
+
 <img width="480" height="360" alt="image" src="https://github.com/user-attachments/assets/82ce9051-efcb-4005-9fd3-809e5418ea2a" />
 <img width="480" height="360" alt="image" src="https://github.com/user-attachments/assets/ee8fd7bb-c1ca-48bf-a36f-ef6882d3bf60" />
 <img width="480" height="360" alt="image" src="https://github.com/user-attachments/assets/1579e149-2cab-46de-8398-1b0accda134c" />
 <img width="480" height="360" alt="image" src="https://github.com/user-attachments/assets/21461cbf-5026-4f61-98ec-c1a2cbce0c3a" />
+
+**Combined Visual for dev correlation for better comparison**
+
+<img width="720" height="540" alt="image" src="https://github.com/user-attachments/assets/c8010695-da99-4aa8-b41e-454bcddfb912" />
+<img width="600" height="450" alt="image" src="https://github.com/user-attachments/assets/43207cb0-15cb-4040-a981-2a7cafa176ed" />
+
+
 
 
 

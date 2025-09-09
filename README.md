@@ -1195,7 +1195,10 @@ This chart compares the dev correlation over 10 epochs across 4 progressively en
 * Best hyperparameter model is not only best in correlation, but also fastest to converge, which is excellent for efficient training.
 * Earlier methods required longer training to reach saturation, but gains were still meaningful at each stage.
 
+## References
 
+**[SimCSE: Simple Contrastive Learning of Sentence Embeddings](https://aclanthology.org/2021.emnlp-main.552.pdf)**
+   Gao, T., Yao, X., & Chen, D. (2021). *SimCSE: Simple Contrastive Learning of Sentence Embeddings.* Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing (EMNLP), 6894–6910.
 
 
 ## 3) Sentiment Analysis (SST):

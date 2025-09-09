@@ -35,6 +35,175 @@ conda activate dnlp
 
 # Project Tasks
 
+## 3) Sentiment Analysis (SST):
+### 1) Finetuning Setup 
+
+Make sure the shell scripts are executable:
+```bash
+chmod +x run_train_sst_rdrop.sh run_train_sst_gradual_unfreezing.sh
+```
+To run different models, use the corresponding script:
+- **BERT with R-Drop and Regularization Strategies:** run_train_sst_rdrop.sh
+- **BERT with Gradual Unfreezing:** run_train_sst_gradual_unfreezing.sh
+
+### 2) File structure
+File structure for this task:
+```
+ ⁠project_root/
+├─ multitask_classifier.py ( baseline )
+├─ sst_finetun_gradual_unfreezing.py  ( gradual unfreezing )
+├─ sst_finetune_rdrop.py  ( R-Drop Regularization ) 
+├─ data/
+│  ├─ sst-sentiment-dev.csv
+│  ├─ sst-sentiment-test-student.csv
+│  └─ sst-sentiment-train.csv
+├─ predictions/
+│  └─ bert/ 
+│     └─ sst-sentiment-dev-output.csv
+      └─ sst-sentiment-test-output.csv
+```
+
+# Methodology
+Each group member worked on their own on one of the different tasks:
+
+## Sentiment Analysis (SST)
+
+In order to improve upon the baseline, we explore 2 different approaches.
+
+### 1. Optimization and Regularization
+
+#### 1.1. R-Drop Regularization 
+- Adopted from "R-Drop: Regulized Dropout for NN (NeurIP 2021)".
+- During training, each input is passed through the model twice with different dropout masks.
+- A consistency loss (bidirectional KL divergence) encourages similar predictions between the two passes.
+- This reduces variance from dropout, improves robustness, and smooths decision boundaries.
+- The total loss combines cross-entropy with the R-Drop regularization term.
+#### 1.2. Additional Training Strategies with R-Drop
+##### 1.2.1. Learning Rate Scheduler 
+- Applied get_linear_schedule_with_warmup to adjust the learning rate. 
+- Ensures smoother and more stable training.
+
+
+### 2. Layer-Wise Fine-Tuning
+
+#### 2.1. Gradual Unfreezing 
+- All BERT encoder layers are initially frozen, and only the classification head is trained.
+- After the first epoch, one BERT encoder layer is unfrozen sequentially from top to bottom (closest to
+the output first).
+- Newly unfrozen layers are added to the optimizer so their parameters are updated during training.
+- This controlled unfreezing allows the model to slowly adapt its pretrained representations to the
+sentiment classification task without catastrophic forgetting.
+
+#### 2.2. L2 Regularization
+  - Implemented through weight decay in the AdamW optimizer.
+  - Helps prevent overfitting by penalizing large weights.
+#### 2.3. Gradient Clipping
+- Applied to prevent exploding gradients.
+- Improves training stability, especially for deep networks.
+
+
+# Experiments
+
+##  Sentiment Analysis (SST)
+### BERT with R-Drop and Regularization Strategies
+- **Objective**: Improve BERT’s performance on sentiment analysis by applying R-Drop and additional training strategies.
+- **Expectations**: Achieve better generalization, improved stability during training, and higher dev accuracy compared to the baseline model.
+
+- **Changes**: 
+  - Added R-Drop by introducing KL divergence loss between two forward passes.
+  - Used a linear warmup scheduler for smoother training.
+  - Used AdamW optimizer with learning rate 2e-5
+  
+- **Results**: 
+  - Achieved the best dev accuracy of 0.552, compared to 0.527 for the baseline.
+  - Training accuracy improved to 0.856, showing stable optimization.
+- **Discussion**: R-Drop consistently improved performance over the baseline, with learning rate tuning providing an additional boost. The linear scheduler improved training smoothness but only added a minor gain. Overall, R-Drop was the main factor driving performance improvements on SST.
+
+### BERT with Gradual Unfreezing
+- **Objective**: Improve dev accuracy of BERT on sentiment analysis by gradually fine-tuning pretrained layers.
+- **Expectations**: Gradual adaptation of pretrained BERT layers will improve generalization and dev accuracy compared to training all layers at once.
+
+- **Changes**:
+  - Initially froze all BERT layers; only the classifier trained in the first epoch.
+  - Sequentially unfroze one BERT encoder layer per epoch from top to bottom.
+  - Updated optimizer and scheduler to include newly trainable parameters.
+  - Applied gradient clipping (using torch.nn.utils.clip_grad_norm_) to stabilize training.
+
+- **Results**: 
+  - Gradual unfreezing dev accuracy: 0.537.
+  - Training accuracy increased slowly (0.579), indicating controlled adaptation.
+- **Discussion**: The baseline initially achieved a dev accuracy of 0.527. By gradually unfreezing BERT layers from top to bottom, the model was able to adapt pretrained features step by step. This improved dev accuracy to 0.537. We also observed that training accuracy did not increase drastically compared to previous experiments, indicating that the model was learning effectively without overfitting. Gradual unfreezing therefore allowed better utilization of pretrained knowledge for sentiment analysis on SST.
+
+  
+
+## Results 
+### Summary of Results
+| **Stanford Sentiment Treebank (SST)** | **Dev Accuracy** |
+|----------------|-----------|
+|Baseline |52.7%           |
+|BERT + R-Drop |  **55.2%** |
+|BERT + Gradual Unfreezing          | 53.7%            |
+
+
+### Discussion
+
+
+####  Sentiment Analysis (SST)
+
+This project aimed to enhance the BERT model's performance for sentiment analysis on the Stanford Sentiment Treebank (SST) dataset. We began with a baseline MiniBERT model that achieved a dev accuracy of 0.527, serving as our reference point for subsequent improvements. Our goal was to explore various techniques to boost performance, including advanced training methods, fine-tuning strategies, and hyperparameter tuning.
+
+Initially, we tested approaches such as Multiple Negative Ranking Loss, SBERT-based sentence embeddings, and changing the optimizer to Adam. These methods did not improve performance over the baseline, showing that techniques designed for semantic similarity or ranking tasks are not always effective for sentiment classification, especially on a small dataset like SST.
+
+The first successful improvement came from R-Drop regularization. By passing the same input twice through the model with different dropout masks and enforcing consistency between the predictions, R-Drop reduced variance and improved generalization. Adjusting the learning rate to 2e-5 further boosted dev accuracy. The linear scheduler smoothed optimization but contributed only minor gains. Overall, this approach increased dev accuracy from 0.527 to 0.552, confirming that enforcing prediction consistency and stable optimization were the main factors driving improvement.
+
+Gradual unfreezing, another fine-tuning strategy, focused on controlled layer-wise adaptation. All BERT layers were initially frozen, and only the classifier was trained during the first epoch. Layers were then sequentially unfrozen from top to bottom over 15 epochs, allowing the model to gradually adapt pretrained features. Gradient clipping was applied to stabilize training. This approach reduced overfitting and improved dev accuracy to 0.537, comparable to R-Drop. It highlights that careful adaptation of pretrained layers can be very effective for small datasets like SST.
+
+Overall, advanced training methods like R-Drop and careful fine-tuning through gradual unfreezing each improved the model’s performance over the baseline. R-Drop enhanced robustness and prediction consistency, while gradual unfreezing leveraged pretrained knowledge in a controlled manner. These results suggest that principled fine-tuning strategies are effective for improving sentiment classification on SST.
+
+
+###  Hyperparameter Tuning and Analysis 
+####  Sentiment Analysis (SST)
+Hyperparameter tuning was key to improving model performance. For R-Drop, the best results were achieved with a dropout probability of 0.1, 10 epochs, a learning rate of 2e-5, and a batch size of 64. Gradient clipping and a linear scheduler helped stabilize training.
+
+For Gradual Unfreezing, BERT layers were initially frozen and then sequentially unfrozen over 15 epochs, with a learning rate of 1e-5 and gradient clipping helping the model gradually adapt pretrained features without overfitting. We observed that a smaller dropout of 0.1 reached 0.535 dev accuracy, while 0.3 slightly improved it to 0.537. A larger batch size of 64 performed better than 16 or 32. These results show that even small changes in dropout, epochs, or batch size can noticeably affect performance, emphasizing the importance of careful hyperparameter tuning.
+
+Hyperparameter tuning was time-consuming but essential. Small changes in parameters had a big impact on model performance, showing the importance of careful tuning when working with BERT for sentiment analysis. The optimal settings we found can be a good starting point for future experiments, though they may need adjustment for different datasets or models.
+
+## Visualizations 
+
+### BERT with R-Drop and Regularization Strategies
+
+#### Train Accuracy:
+<img width="640" height="480" alt="RDrop_train_accu" src="https://github.com/user-attachments/assets/44e09bee-a722-44e5-a0cd-2593b2e895bb" />
+
+#### Dev Accuracy:
+<img width="640" height="480" alt="RDrop_dev_accu" src="https://github.com/user-attachments/assets/6dbf5a28-7296-40e9-8497-545d7f1acfe0" />
+
+
+#### Train loss:
+<img width="640" height="480" alt="RDrop_loss" src="https://github.com/user-attachments/assets/f2c5edcf-7b0a-4bc6-a6d5-b0f6ec2cd44f" />
+
+
+### BERT with Gradual Unfreezing
+#### Train Accuracy:
+<img width="640" height="480" alt="GU_train_acc" src="https://github.com/user-attachments/assets/61d21cfa-8523-4eff-8d2e-cb417729eccd" />
+
+#### Dev Accuracy:
+<img width="640" height="480" alt="GU_dev_accu" src="https://github.com/user-attachments/assets/fd768b7e-e49f-42c3-bf15-55f8c380410b" />
+
+#### Train loss:
+
+<img width="640" height="480" alt="GU_loss" src="https://github.com/user-attachments/assets/84dafab5-8670-4b6f-8b82-320f06c0936c" />
+
+### **What the curves show:**  
+- **Train loss:** Both models decrease steadily; R-Drop converges faster.  
+- **Train accuracy:** R-Drop rises quickly (~97.9%), Gradual Unfreezing increases gradually (~85.8%).  
+- **Dev accuracy:** R-Drop peaks earlier (~55.2%), Gradual Unfreezing rises steadily (~53.7%).  
+- **Interpretation:** R-Drop gives faster gains with slight fluctuations; Gradual Unfreezing is slower but more stable, leveraging pretrained features without overfitting.  
+
+#### References
+- R-Drop: Regularized Dropout for Neural Networks NeurIPS 2021.(https://arxiv.org/pdf/2106.14448)
+
 ##  4) Bart paraphrase type detection
 ### 1) Install extra packages
 ```

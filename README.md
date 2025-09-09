@@ -558,42 +558,35 @@ python multitask_classifier_sts.py \
 --epochs                              Training epochs (default: 10)
 --lr                                  AdamW learning rate (default: 1e-5)
 
-# Model & Tokenization
+# Model
 --option                              BERT training mode (default: pretrain)
 --batch_size                          Samples per update (default: 64)
---max_seq_length                      Maximum token length (default: 128)
-
-# Head (QQP) & Dropout
 --hidden_dropout_prob                 Dropout rate for layers (default: 0.3)
---qqp_hidden                          Hidden units in head (default: 512)
 
-# Optimization & Scheduling
---weight_decay                        L2 regularization strength (default: 0.01)
---warmup_ratio                        LR warmup proportion (default: 0.1)
---max_grad_norm                       Gradient clipping threshold (default: 1.0)
---fp16                                Enable mixed-precision training
---grad_ckpt                           Enable gradient checkpointing in BERT
+# Similarity Head Configuration
+--sim_head                            Choose similarity head architecture (default: linear)
+                                      (choices: "linear", "mlp", "deep_with_gelu", "deep_with_relu")
 
-# Loss Controls & Class Imbalance
---label_smoothing                     Binary label smoothing for QQP  (default: 0.0)
---pos_weight                          Positive class weight for BCE; 0 disables (default: 0.0)
+--sim_feats                           Sentence pair feature vector structure (default: avg)
+                                      (choices: "base", "avg")
+                                      "base": [emb1, emb2, |emb1 - emb2|, emb1 * emb2]
+                                      "avg":  [emb1, emb2, |emb1 - emb2|, emb1 * emb2, (emb1 + emb2)/2]
 
-# Contrastive (MNRL) Controls
---mnr_weight                          Weight for Multiple Negative Ranking loss (default: 0.2)
---mnr_temperature                     Softmax temperature for MNR (default: 0.05)
---mnr_symmetric                       Apply MNR both directions
---proj_dim                            Projection dim before QQP head/MNR (default: 256)
-    
-# Stemming Consistency (R-Drop)
---stem_aug                            Use stemming-based consistency loss for QQP
---stemmer                             Stemming algorithm choice (default: porter)
---stem_alpha                          Weight of KL in stemming consistency (default: 1.0)
-    
-# Approach Selector
---approach                            Choose between 5 approaches for improving QQP Baseline (default: mnrl)
-                                      (choices: "mnrl", "optimized_pipeline", "mnrl_with_optimized_pipeline", "sbert", "stemming")
+# Architectural Enhancements
+--use_residual                        Enable residual connections in sim head
+--use_norm                            Apply layer normalization in sim head
+
+# Learning Rate Scheduling
+--use_linear_scheduler                Use linear scheduler with warmup
+--use_cosine_scheduler                Use cosine annealing learning rate scheduler
+
+# Contrastive Learning Options
+--use_contrastive                     Enable SimCSE-style contrastive loss for STS
+--contrastive_loss_weight             Weight for contrastive loss component (default: 0.5)
+--use_inbatch_contrastive             Use in-batch negatives for contrastive learning
 
 ```
+
 
 ## 4) Methodology
 
@@ -1145,7 +1138,7 @@ Experiment 16: *{Pearson Loss + Mean Pooling + Deep NN with GELU + avg_sentence_
 
 
 ## 7) Visualizations 
-**Indivisual Visuals for dev correlation**
+**Individual Visuals for dev correlation**
 
 <img width="480" height="360" alt="image" src="https://github.com/user-attachments/assets/82ce9051-efcb-4005-9fd3-809e5418ea2a" />
 <img width="480" height="360" alt="image" src="https://github.com/user-attachments/assets/ee8fd7bb-c1ca-48bf-a36f-ef6882d3bf60" />
@@ -1158,15 +1151,50 @@ Experiment 16: *{Pearson Loss + Mean Pooling + Deep NN with GELU + avg_sentence_
 <img width="600" height="450" alt="image" src="https://github.com/user-attachments/assets/43207cb0-15cb-4040-a981-2a7cafa176ed" />
 
 
+**Visual Analysis: Dev Correlation Curves**
+
+This chart compares the dev correlation over 10 epochs across 4 progressively enhanced architectures:
+
+| Method                 | Convergence | Final Dev Corr | Observations                                   |
+| ---------------------- | ----------- | -------------- | ---------------------------------------------- |
+| **GELU Only**          | Slower      |  0.818        | Gradual, steady improvement                    |
+| **+ Norm/Residual**    | Faster      |  0.828        | Significant early boost, flatter later         |
+| **+ Contrastive**      | Fastest     |  0.834        | Peak reached early (\~epoch 5)                 |
+| **+ Best Hyperparams** | Fastest     | **0.855**      | Best overall performance and early convergence |
 
 
+**Individual Visuals Analysis**
 
-Add relevant graphs of your experiments here. Those graphs should show relevant metrics (accuracy, validation loss, etc.) during the training. Compare the  different training processes of your improvements in those graphs. 
+1. **Deep NN with GELU**
 
-For example, you could analyze different questions with those plots like: 
-- Does improvement A converge faster during training than improvement B? 
-- Does Improvement B converge slower but perform better in the end? 
-- etc...
+   * Starts slow (0.69), reaches 0.818 by epoch 10.
+   * Gradual and stable.
+   * Max correlation at epoch 10.
+
+2. **+ Norm/Residual**
+
+   * Immediate jump to 0.814 at epoch 2.
+   * Peaks at 0.828 (epoch 8) and plateaus.
+   * Demonstrates faster early learning.
+
+3. **+ Contrastive Learning**
+
+   * Even faster rise: 0.801 at epoch 3, 0.834 at epoch 8.
+   * Slight dip in epoch 10, showing possible early convergence and overfitting beyond epoch 8.
+
+4. **+ Best Hyperparameters**
+
+   * Reaches 0.855 by epoch 9, already 0.845 by epoch 3.
+   * Best result both in performance and convergence speed.
+   * Most stable across epochs.
+
+**Conclusion**
+
+* Every improvement stage; architecture → regularization → objective function → hyperparameters; added consistent value.
+* Contrastive learning gave a strong early boost, which was stabilized and enhanced with tuned hyperparameters.
+* Best hyperparameter model is not only best in correlation, but also fastest to converge, which is excellent for efficient training.
+* Earlier methods required longer training to reach saturation, but gains were still meaningful at each stage.
+
 
 
 

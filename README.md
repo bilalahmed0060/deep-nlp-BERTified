@@ -1153,6 +1153,8 @@ Experiment 16: *{Pearson Loss + Mean Pooling + Deep NN with GELU + avg_sentence_
 
 
 ## 7) Visualizations 
+<img width="820" height="631" alt="image" src="https://github.com/user-attachments/assets/82ce9051-efcb-4005-9fd3-809e5418ea2a" />
+
 Add relevant graphs of your experiments here. Those graphs should show relevant metrics (accuracy, validation loss, etc.) during the training. Compare the  different training processes of your improvements in those graphs. 
 
 For example, you could analyze different questions with those plots like: 

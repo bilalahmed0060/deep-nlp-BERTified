@@ -1597,7 +1597,7 @@ Discussion & Takeaways
 
 *Bilal Ahmed:* Implemented Sentiment Analysis (SST) baseline and introduced 2 improvements to optimize performance.
 
-*Member 2:*
+*Ali Amsal Surani:* Implemented Semantic Textual Similarity (STS) baseline and introduced multiple improvements to optimize the performance.
 
 *Areesha Jiwani:* Implemented Quora Question Pairs (QQP) Baseline and introduced 5 improvements to the baseline to increase performance.
 
@@ -1612,6 +1612,9 @@ Artificial Intelligence (AI) aided the development of this project. Please add a
 
 #### Sentiment Analysis (SST)
 [![AI-Usage Card SST](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Cards_SST.pdf/)
+
+#### Semantic Textual Similarity (STS)
+[![AI-Usage Card QQP](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Card_STS.pdf/)
 
 #### Quora Question Pairs (QQP)
 [![AI-Usage Card QQP](https://img.shields.io/badge/AI_Usage_Card-pdf-blue.svg)](./documentation/AI_Usage_Card_QQP.pdf/)

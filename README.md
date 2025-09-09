@@ -54,7 +54,7 @@ File structure for this task:
 
 ### 2) Execution modes
 1) Baseline:
-Trains Bert with plain binary cross-entropy (original baseline).
+
 ```
 python multitask_classifier.py \
 --task=qqp \

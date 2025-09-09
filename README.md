@@ -204,6 +204,7 @@ Hyperparameter tuning was time-consuming but essential. Small changes in paramet
 
 #### References
 - R-Drop: Regularized Dropout for Neural Networks NeurIPS 2021.(https://arxiv.org/pdf/2106.14448)
+- ULMFiT: Universal Language Model Fine-tuning for Text Classification, Howard and Ruder, 2018. (https://aclanthology.org/P18-1031.pdf)
 
 ##  4) Bart paraphrase type detection
 ### 1) Install extra packages
@@ -873,7 +874,7 @@ Discussion & Takeaways
 
 *Ahmad Raza Khawaja:* Implemented the Paraphrase detection basline task using BART and introduced 2 improvements for further optimization, and also implemented baseline implementation for the BERT paraphrase type detection bonus task.
 
-*Member 2:*
+*Bilal Ahmed:* Implemented Sentiment Analysis (SST) baseline and introduced 2 improvements to optimize performance.
 
 *Member 2:*
 

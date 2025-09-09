@@ -61,7 +61,7 @@ python multitask_classifier.py \
 --option=finetune \
 --use_gpu \
 ```
-2) Multiple Negative Ranking Loss (MNRL) + Optimal Hyperparameters:
+2) Improvement 1: **Multiple Negative Ranking Loss (MNRL) + Optimal Hyperparameters**
    
 ```
 python multitask_classifier_qqp.py \
@@ -70,15 +70,15 @@ python multitask_classifier_qqp.py \
 --approach=mnrl
 ```
 
-3) Optimized Pipeline (Stronger Head + Training Tweaks):
+3) Improvement 2: **Optimized Pipeline (Stronger Head + Training Tweaks)**
 ```
 python multitask_classifier_qqp.py \
---task=qqp -option=finetune --use_gpu \
+--task=qqp --option=finetune --use_gpu \
 --lr=2.2e-5 --label_smoothing=0.05  \
 --approach=optimized_pipeline
 ```
 
-4) MNRL + Optimized Pipeline + Optimal Hyperparameters:
+4) Improvement 3: **MNRL + Optimized Pipeline + Optimal Hyperparameters**
 ```
 python multitask_classifier_qqp.py \
 --task=qqp --option=finetune --use_gpu \
@@ -89,15 +89,15 @@ python multitask_classifier_qqp.py \
 --approach=mnrl_with_optimized_pipeline
 ```
 
-5) Sentence Bert:
+5) Improvement 4: **Sentence Bert**
 ```
 python multitask_classifier_qqp.py \
 --task=qqp --option=finetune --use_gpu \
---lr 2.2e-5 --hidden_dropout_prob 0.1 \
+--lr=2.2e-5 --hidden_dropout_prob=0.1 \
 --approach=sbert
 ```
 
-6) Stemming:
+6) Improvement 5: **Stemming**
 ```
 python multitask_classifier_qqp.py \
 --task=qqp --option=finetune --use_gpu \

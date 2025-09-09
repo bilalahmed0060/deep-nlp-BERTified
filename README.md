@@ -40,9 +40,10 @@ conda activate dnlp
 
 Make sure the shell scripts are executable:
 ```bash
-chmod +x run_train_sst_rdrop.sh run_train_sst_gradual_unfreezing.sh
+chmod +x run_train_sst_base.sh run_train_sst_rdrop.sh run_train_sst_gradual_unfreezing.sh
 ```
 To run different models, use the corresponding script:
+- **Baseline BERT:** run_train_sst_base.sh
 - **BERT with R-Drop and Regularization Strategies:** run_train_sst_rdrop.sh
 - **BERT with Gradual Unfreezing:** run_train_sst_gradual_unfreezing.sh
 

@@ -59,7 +59,7 @@ File structure for this task:
 python multitask_classifier.py \
 --task=qqp \
 --option=finetune \
---use_gpu \
+--use_gpu
 ```
 2) Improvement 1: **Multiple Negative Ranking Loss (MNRL) + Optimal Hyperparameters**
    
@@ -74,7 +74,7 @@ python multitask_classifier_qqp.py \
 ```
 python multitask_classifier_qqp.py \
 --task=qqp --option=finetune --use_gpu \
---lr=2.2e-5 --label_smoothing=0.05  \
+--lr=2.2e-5 --label_smoothing=0.05 \
 --approach=optimized_pipeline
 ```
 

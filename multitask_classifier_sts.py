@@ -416,7 +416,7 @@ def train_multitask(args):
                     z2 = model.forward(b_ids1, b_mask1)  # View 2 (dropout noise makes it different)
                     contrastive_labels = torch.ones(z1.size(0)).to(device)
                     contrastive_loss = CosineEmbeddingLoss()(z1, z2, contrastive_labels)
-                    alpha = args.contrastive_loss_weight  # You can tune this weight
+                    alpha = args.contrastive_loss_weight  
                     loss += alpha * contrastive_loss
 
                 loss.backward()

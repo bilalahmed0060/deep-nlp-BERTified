@@ -874,7 +874,7 @@ Discussion & Takeaways
 
 *Ahmad Raza Khawaja:* Implemented the Paraphrase detection basline task using BART and introduced 2 improvements for further optimization, and also implemented baseline implementation for the BERT paraphrase type detection bonus task.
 
-*Member 2:*
+*Bilal Ahmed:* Implemented Sentiment Analysis (SST) baseline and introduced 2 improvements to optimize performance.
 
 *Member 2:*
 

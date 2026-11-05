@@ -1,3 +1,36 @@
+# BERTified — Multitask NLP with BERT and BART
+
+Group project for the **Deep Learning for NLP** course (Summer 2025, University of Göttingen). We implemented a minimal BERT model (minBERT) and fine-tuned BERT and BART for five NLP tasks, then improved each baseline with techniques from recent research.
+
+**Tech:** Python · PyTorch · BERT · BART · Hugging Face Transformers · SLURM on GWDG A100 GPUs
+
+## Results at a glance
+
+| Task | Model | Metric | Baseline | Best | Best approach |
+|---|---|---|---|---|---|
+| Sentiment Analysis (SST) | BERT | Dev accuracy | 52.7% | **55.2%** | R-Drop regularization |
+| Quora Question Pairs (QQP) | BERT | Dev accuracy | 78.1% | **87.7%** | Multiple Negative Ranking Loss + tuned hyperparameters |
+| Semantic Textual Similarity (STS) | BERT | Pearson correlation | 0.353 | **0.834** | Pearson loss, deep GELU head, residual + norm layers, contrastive learning |
+| Paraphrase Type Detection | BART | Dev MCC (tuned) | 0.073 | **0.532** | Asymmetric Loss + per-class thresholds |
+| Paraphrase Type Generation | BART | Penalized BLEU | 26.21 | **33.50** | Two-phase reinforcement learning (SCST) |
+
+## My contribution — Sentiment Analysis (SST)
+
+I (Bilal Ahmed) implemented the SST sentiment classification baseline and two improvements:
+
+- **R-Drop regularization** — each input passes through the model twice with different dropout masks; a KL-divergence consistency loss keeps the predictions aligned. With a linear warmup scheduler and tuned learning rate, dev accuracy rose from **52.7% to 55.2%**.
+- **Gradual unfreezing** — BERT layers start frozen and are unfrozen top-down over 15 epochs with gradient clipping, reducing overfitting on the small dataset (**53.7%**).
+
+Code: [`sst_finetune_rdrop.py`](sst_finetune_rdrop.py), [`sst_finetune_gradual_unfreezing.py`](sst_finetune_gradual_unfreezing.py) · run scripts: [`run_train_sst_rdrop.sh`](run_train_sst_rdrop.sh), [`run_train_sst_gradual_unfreezing.sh`](run_train_sst_gradual_unfreezing.sh). Details: [Sentiment Analysis (SST)](#3-sentiment-analysis-sst).
+
+## Team
+
+Muhammad Usman Khanzada (team lead, paraphrase generation) · Ahmad Raza Khawaja (paraphrase detection) · **Bilal Ahmed (sentiment analysis)** · Ali Surani (semantic similarity) · Areesha Jiwani (Quora question pairs) — see [Members Contribution](#members-contribution).
+
+The full project report with setup, methods, experiments and visualizations for every task follows below.
+
+---
+
 # DNLP SS25 Final Project
 -   *Group name:* The Tokenizers
     
